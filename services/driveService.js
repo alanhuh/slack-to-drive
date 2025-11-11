@@ -23,13 +23,23 @@ function initializeDriveClient() {
 
   try {
     // Load service account credentials
-    const credentialsPath = path.resolve(config.drive.credentialsPath);
+    let credentials;
 
-    if (!fs.existsSync(credentialsPath)) {
-      throw new Error(`Google credentials file not found at: ${credentialsPath}`);
+    // Check if credentials are provided as base64 (for Render/cloud deployment)
+    if (config.drive.credentialsBase64) {
+      logger.info('Loading Google credentials from base64 environment variable');
+      const credentialsJson = Buffer.from(config.drive.credentialsBase64, 'base64').toString('utf8');
+      credentials = JSON.parse(credentialsJson);
+    } else {
+      // Load from file (for local development)
+      const credentialsPath = path.resolve(config.drive.credentialsPath);
+
+      if (!fs.existsSync(credentialsPath)) {
+        throw new Error(`Google credentials file not found at: ${credentialsPath}`);
+      }
+
+      credentials = JSON.parse(fs.readFileSync(credentialsPath, 'utf8'));
     }
-
-    const credentials = JSON.parse(fs.readFileSync(credentialsPath, 'utf8'));
 
     // Create auth client
     const auth = new google.auth.GoogleAuth({

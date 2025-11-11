@@ -1,0 +1,89 @@
+services:
+  - type: web
+    name: slack-to-drive
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+
+    # Environment variables
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      - key: PORT
+        value: 10000
+
+      - key: LOG_LEVEL
+        value: info
+
+      # Slack Configuration (set these in Render Dashboard)
+      - key: SLACK_SIGNING_SECRET
+        sync: false
+
+      - key: SLACK_BOT_TOKEN
+        sync: false
+
+      - key: SLACK_APP_TOKEN
+        sync: false
+
+      # Target User (Optional)
+      - key: TARGET_USER_ID
+        value: ""
+
+      # Google Drive Configuration (set these in Render Dashboard)
+      - key: GOOGLE_DRIVE_FOLDER_ID
+        sync: false
+
+      - key: GOOGLE_SERVICE_ACCOUNT_EMAIL
+        sync: false
+
+      # Google Credentials (JSON as base64 - set in Render Dashboard)
+      - key: GOOGLE_CREDENTIALS_BASE64
+        sync: false
+
+      # File Upload Settings
+      - key: MAX_FILE_SIZE_MB
+        value: 50
+
+      - key: ALLOWED_IMAGE_TYPES
+        value: image/jpeg,image/png,image/gif,image/webp,image/bmp
+
+      - key: CREATE_DATE_FOLDERS
+        value: true
+
+      # Retry Configuration
+      - key: MAX_RETRY_ATTEMPTS
+        value: 3
+
+      - key: RETRY_DELAY_MS
+        value: 2000
+
+      # Queue Configuration
+      - key: QUEUE_CONCURRENCY
+        value: 3
+
+      # Notification Settings
+      - key: SEND_COMPLETION_MESSAGE
+        value: true
+
+      - key: SEND_ERROR_MESSAGE
+        value: true
+
+      # Notion Logging (Optional)
+      - key: ENABLE_NOTION_LOGGING
+        value: false
+
+      - key: NOTION_API_KEY
+        sync: false
+
+      - key: NOTION_UPLOAD_LOG_DB_ID
+        sync: false
+
+    # Persistent disk for database and logs
+    disk:
+      name: slack-drive-data
+      mountPath: /opt/render/project/src
+      sizeGB: 1

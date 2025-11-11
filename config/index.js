@@ -61,6 +61,7 @@ const config = {
     folderId: process.env.GOOGLE_DRIVE_FOLDER_ID,
     serviceAccountEmail: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
     credentialsPath: process.env.GOOGLE_CREDENTIALS_PATH || './config/google-credentials.json',
+    credentialsBase64: process.env.GOOGLE_CREDENTIALS_BASE64 || null,
   },
 
   // File Upload

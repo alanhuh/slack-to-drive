@@ -517,6 +517,105 @@ TARGET_USER_ID=U123456789
 
 ## 프로덕션 배포
 
+### Render.com 배포 (권장) ⭐
+
+Render는 무료 티어를 제공하며 자동 배포와 HTTPS를 지원합니다.
+
+#### 1. GitHub Repository 생성
+
+```bash
+# GitHub에서 새 repository 생성 후
+git remote add origin https://github.com/YOUR_USERNAME/slack-to-drive.git
+git branch -M master
+git push -u origin master
+```
+
+#### 2. Google Credentials Base64 인코딩
+
+Render는 파일 업로드를 지원하지 않으므로 credentials를 base64로 인코딩합니다:
+
+**Windows (PowerShell):**
+```powershell
+[Convert]::ToBase64String([System.IO.File]::ReadAllBytes("config\google-credentials.json")) | Set-Clipboard
+```
+
+**Mac/Linux:**
+```bash
+base64 -i config/google-credentials.json | pbcopy
+```
+
+클립보드에 base64 문자열이 복사됩니다.
+
+#### 3. Render 설정
+
+1. [https://render.com](https://render.com) 접속 및 가입
+2. **New +** → **Web Service** 클릭
+3. GitHub repository 연결
+4. 설정 입력:
+   - **Name**: `slack-to-drive` (또는 원하는 이름)
+   - **Region**: Oregon (US West)
+   - **Branch**: `master`
+   - **Root Directory**: 비워두기
+   - **Runtime**: Node
+   - **Build Command**: `npm install`
+   - **Start Command**: `npm start`
+   - **Plan**: Free
+
+#### 4. 환경 변수 설정
+
+Render Dashboard에서 **Environment** 탭으로 이동하여 다음 변수 추가:
+
+**필수 변수:**
+```
+SLACK_SIGNING_SECRET=your_slack_signing_secret
+SLACK_BOT_TOKEN=xoxb-your-bot-token
+GOOGLE_DRIVE_FOLDER_ID=your_folder_id
+GOOGLE_CREDENTIALS_BASE64=your_base64_encoded_credentials
+```
+
+**선택 변수:**
+```
+TARGET_USER_ID=U123456789
+MAX_FILE_SIZE_MB=50
+QUEUE_CONCURRENCY=3
+ENABLE_NOTION_LOGGING=true
+NOTION_API_KEY=secret_your_api_key
+NOTION_UPLOAD_LOG_DB_ID=your_database_id
+```
+
+#### 5. 배포 및 URL 확인
+
+1. **Create Web Service** 클릭
+2. 자동 배포 시작 (5-10분 소요)
+3. 배포 완료 후 URL 확인: `https://your-app-name.onrender.com`
+
+#### 6. Slack Event URL 업데이트
+
+1. [Slack API Apps](https://api.slack.com/apps) 접속
+2. 앱 선택 → **Event Subscriptions**
+3. **Request URL** 업데이트:
+   ```
+   https://your-app-name.onrender.com/slack/events
+   ```
+4. **Save Changes**
+
+#### 7. 헬스 체크 확인
+
+```bash
+curl https://your-app-name.onrender.com/health
+```
+
+#### Render 무료 티어 제한사항
+
+- ⚠️ **15분 비활동 시 슬립 모드** (첫 요청 시 재시작에 30초 소요)
+- 💾 **512MB RAM**
+- 💿 **1GB 디스크**
+- 🔄 **자동 재배포** (GitHub push 시)
+
+**슬립 모드 해결 방법:**
+- [UptimeRobot](https://uptimerobot.com) 사용하여 5분마다 /health 핑
+- 또는 유료 플랜 사용 ($7/월)
+
 ### 환경 변수
 
 프로덕션에서 `NODE_ENV=production` 설정:
