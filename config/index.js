@@ -98,6 +98,13 @@ const config = {
   database: {
     path: process.env.DATABASE_PATH || './data/uploads.db',
   },
+
+  // Notion (Optional)
+  notion: {
+    apiKey: process.env.NOTION_API_KEY || '',
+    uploadLogDbId: process.env.NOTION_UPLOAD_LOG_DB_ID || '',
+    enabled: parseBoolean(process.env.ENABLE_NOTION_LOGGING, false),
+  },
 };
 
 /**

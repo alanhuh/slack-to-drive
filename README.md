@@ -1,232 +1,278 @@
-# Slack to Google Drive Image Uploader
+# Slack to Google Drive 이미지 자동 업로더
 
-Automatically upload images from Slack to Google Drive with this production-ready Node.js server.
+Slack에서 업로드된 이미지를 자동으로 Google Drive에 저장하는 프로덕션 레벨 Node.js 서버입니다.
 
-## Features
+## 주요 기능
 
-- ✅ Automatic image upload from Slack to Google Drive
-- ✅ Service Account authentication (no OAuth needed)
-- ✅ Date-based folder organization (YYYY-MM-DD)
-- ✅ Duplicate filename handling with timestamps
-- ✅ File validation (size, type, user)
-- ✅ Queue system with concurrency control
-- ✅ Retry logic with exponential backoff
-- ✅ SQLite database for upload history
-- ✅ Comprehensive logging with Winston
-- ✅ Slack signature verification
-- ✅ Success/error notifications in Slack
-- ✅ Health check endpoint
+- ✅ Slack에서 Google Drive로 이미지 자동 업로드
+- ✅ Service Account 인증 (OAuth 불필요)
+- ✅ 날짜별 폴더 자동 생성 (YYYY-MM-DD)
+- ✅ 파일명 중복 처리 (타임스탬프 추가)
+- ✅ 파일 검증 (크기, 타입, 사용자)
+- ✅ 동시 처리 제어 큐 시스템
+- ✅ 재시도 로직 (exponential backoff)
+- ✅ SQLite 업로드 히스토리 저장
+- ✅ Winston 로깅 시스템
+- ✅ Slack 서명 검증 (보안)
+- ✅ 성공/실패 Slack 알림
+- ✅ 헬스 체크 엔드포인트
 - ✅ Graceful shutdown
+- ✅ Notion 업로드 로그 기록 (선택 사항)
 
-## Prerequisites
+## 사전 준비
 
 ### 1. Node.js
-- Node.js 18+ (LTS recommended)
-- npm or yarn
+- Node.js 18+ (LTS 권장)
+- npm 또는 yarn
 
-### 2. Slack App Setup
+### 2. Slack 앱 설정
 
-1. Go to [https://api.slack.com/apps](https://api.slack.com/apps)
-2. Click **"Create New App"** → **"From scratch"**
-3. Enter app name and select workspace
+1. [https://api.slack.com/apps](https://api.slack.com/apps) 접속
+2. **"Create New App"** 클릭 → **"From scratch"** 선택
+3. 앱 이름 입력 및 워크스페이스 선택
 
 #### OAuth & Permissions
-Navigate to **OAuth & Permissions** and add these **Bot Token Scopes**:
-- `files:read` - Read file information
-- `users:read` - Read user information
-- `chat:write` - Send messages
+**OAuth & Permissions** 메뉴로 이동하여 다음 **Bot Token Scopes** 추가:
+- `files:read` - 파일 정보 읽기
+- `users:read` - 사용자 정보 읽기
+- `chat:write` - 메시지 전송
 
 #### Event Subscriptions
-1. Navigate to **Event Subscriptions**
-2. Enable Events
-3. Set **Request URL**: `https://your-domain.com/slack/events`
-   - For local development, use ngrok (see below)
-4. Subscribe to **bot events**:
-   - `file_shared` - Triggered when files are shared
+1. **Event Subscriptions** 메뉴로 이동
+2. Events 활성화
+3. **Request URL** 설정: `https://your-domain.com/slack/events`
+   - 로컬 개발의 경우 ngrok 사용 (아래 참조)
+4. **bot events** 구독:
+   - `file_shared` - 파일 공유 시 트리거
 
-#### Install App
-1. Navigate to **Install App**
-2. Click **"Install to Workspace"**
-3. Copy the **Bot User OAuth Token** (starts with `xoxb-`)
+#### 앱 설치
+1. **Install App** 메뉴로 이동
+2. **"Install to Workspace"** 클릭
+3. **Bot User OAuth Token** 복사 (`xoxb-`로 시작)
 
-#### App Credentials
-Navigate to **Basic Information** and copy:
+#### 앱 인증 정보
+**Basic Information** 메뉴에서 복사:
 - **Signing Secret**
 
-### 3. Google Cloud Setup
+### 3. Google Cloud 설정
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project or select existing one
-3. Enable **Google Drive API**:
-   - Navigate to **APIs & Services** → **Library**
-   - Search for "Google Drive API"
-   - Click **Enable**
+1. [Google Cloud Console](https://console.cloud.google.com/) 접속
+2. 새 프로젝트 생성 또는 기존 프로젝트 선택
+3. **Google Drive API** 활성화:
+   - **APIs & Services** → **Library** 이동
+   - "Google Drive API" 검색
+   - **Enable** 클릭
 
-#### Create Service Account
-1. Navigate to **IAM & Admin** → **Service Accounts**
-2. Click **Create Service Account**
-3. Enter name and description
-4. Click **Create and Continue**
-5. Skip optional steps and click **Done**
+#### Service Account 생성
+1. **IAM & Admin** → **Service Accounts** 이동
+2. **Create Service Account** 클릭
+3. 이름 및 설명 입력
+4. **Create and Continue** 클릭
+5. 선택 단계는 건너뛰고 **Done** 클릭
 
-#### Create JSON Key
-1. Click on the created service account
-2. Go to **Keys** tab
-3. Click **Add Key** → **Create new key**
-4. Choose **JSON**
-5. Download the key file → Save as `config/google-credentials.json`
+#### JSON 키 생성
+1. 생성한 Service Account 클릭
+2. **Keys** 탭으로 이동
+3. **Add Key** → **Create new key** 클릭
+4. **JSON** 선택
+5. 키 파일 다운로드 → `config/google-credentials.json`으로 저장
 
-#### Share Drive Folder
-1. Create or open target folder in Google Drive
-2. Copy the **Folder ID** from URL:
+#### Drive 폴더 공유
+1. Google Drive에서 대상 폴더 생성 또는 열기
+2. URL에서 **Folder ID** 복사:
    ```
    https://drive.google.com/drive/folders/FOLDER_ID_HERE
    ```
-3. Click **Share** on the folder
-4. Add the service account email (from JSON key: `client_email`)
-5. Give **Editor** permission
+3. 폴더에서 **공유** 클릭
+4. Service Account 이메일 추가 (JSON 키의 `client_email`)
+5. **편집자** 권한 부여
 
-## Installation
+### 4. Notion 설정 (선택 사항)
 
-### 1. Clone or Download
+업로드 내역을 Notion 데이터베이스에 로그로 남기고 싶다면 다음 단계를 진행하세요.
+
+#### Notion Integration 생성
+
+1. [https://www.notion.so/my-integrations](https://www.notion.so/my-integrations) 접속
+2. **"+ New integration"** 클릭
+3. 이름 입력 (예: "Slack Upload Logger")
+4. 워크스페이스 선택
+5. **Submit** 클릭
+6. **Internal Integration Token** 복사 (secret_로 시작)
+
+#### Notion 페이지 준비
+
+1. Notion에서 로그를 저장할 **페이지** 생성 또는 선택
+2. 페이지 우측 상단의 **⋯** 메뉴 클릭
+3. **Connections** 또는 **Add connections** 선택
+4. 생성한 Integration 추가
+5. 페이지 URL에서 **Page ID** 복사:
+   ```
+   https://www.notion.so/your-workspace/PAGE_ID_HERE?v=...
+   ```
+
+#### Notion 데이터베이스 생성
+
+환경 변수 설정 후 다음 스크립트를 실행하여 자동으로 데이터베이스를 생성합니다:
+
+```bash
+# .env에 Notion API 키 설정
+NOTION_API_KEY=secret_your_api_key_here
+
+# 데이터베이스 생성 스크립트 실행
+node scripts/setup-notion-db.js <parent-page-id>
+```
+
+스크립트가 성공적으로 실행되면 데이터베이스 ID가 출력됩니다. 이를 `.env` 파일에 추가하세요.
+
+## 설치 방법
+
+### 1. 프로젝트 이동
 
 ```bash
 cd slack_img_automation
 ```
 
-### 2. Install Dependencies
+### 2. Dependencies 설치
 
 ```bash
 npm install
 ```
 
-### 3. Create Environment File
+### 3. 환경 변수 파일 생성
 
-Copy the example environment file:
+예제 환경 변수 파일 복사:
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` with your credentials:
+`.env` 파일을 열어서 인증 정보 입력:
 
 ```env
-# Server Configuration
+# 서버 설정
 NODE_ENV=development
 PORT=3000
 LOG_LEVEL=info
 
-# Slack Configuration
+# Slack 설정
 SLACK_SIGNING_SECRET=your_slack_signing_secret_here
 SLACK_BOT_TOKEN=xoxb-your-bot-token-here
 
-# Target User (Optional - leave empty to accept all users)
+# 대상 사용자 (선택 - 모든 사용자를 허용하려면 비워두기)
 TARGET_USER_ID=
 
-# Google Drive Configuration
+# Google Drive 설정
 GOOGLE_DRIVE_FOLDER_ID=your_drive_folder_id_here
 
-# File Upload Settings
+# 파일 업로드 설정
 MAX_FILE_SIZE_MB=50
 ALLOWED_IMAGE_TYPES=image/jpeg,image/png,image/gif,image/webp,image/bmp
 CREATE_DATE_FOLDERS=true
 
-# Retry Configuration
+# 재시도 설정
 MAX_RETRY_ATTEMPTS=3
 RETRY_DELAY_MS=2000
 
-# Queue Configuration
+# 큐 설정
 QUEUE_CONCURRENCY=3
 
-# Notification Settings
+# 알림 설정
 SEND_COMPLETION_MESSAGE=true
 SEND_ERROR_MESSAGE=true
+
+# Notion 로깅 (선택 사항 - 사용하지 않으면 비워두기)
+ENABLE_NOTION_LOGGING=false
+NOTION_API_KEY=
+NOTION_UPLOAD_LOG_DB_ID=
 ```
 
-### 4. Add Google Credentials
+### 4. Google Credentials 추가
 
-Place your Google Service Account JSON key at:
+Google Service Account JSON 키를 다음 위치에 저장:
 ```
 config/google-credentials.json
 ```
 
-**Important**: This file contains sensitive credentials. Never commit it to Git!
+**중요**: 이 파일은 민감한 인증 정보를 포함합니다. Git에 절대 커밋하지 마세요!
 
-## Usage
+## 사용 방법
 
-### Development Mode (with auto-reload)
+### 개발 모드 (자동 재시작)
 
 ```bash
 npm run dev
 ```
 
-### Production Mode
+### 프로덕션 모드
 
 ```bash
 npm start
 ```
 
-### Using ngrok for Local Development
+### 로컬 개발용 ngrok 사용
 
-Slack requires HTTPS for webhooks. Use ngrok to create a secure tunnel:
+Slack은 웹훅을 위해 HTTPS가 필요합니다. ngrok을 사용하여 보안 터널 생성:
 
-1. Install ngrok: [https://ngrok.com/download](https://ngrok.com/download)
+1. ngrok 설치: [https://ngrok.com/download](https://ngrok.com/download)
 
-2. Start your server:
+2. 서버 시작:
    ```bash
    npm run dev
    ```
 
-3. In another terminal, start ngrok:
+3. 다른 터미널에서 ngrok 시작:
    ```bash
    ngrok http 3000
    ```
 
-4. Copy the HTTPS URL (e.g., `https://abc123.ngrok.io`)
+4. HTTPS URL 복사 (예: `https://abc123.ngrok.io`)
 
-5. Update Slack Event Subscriptions Request URL:
+5. Slack Event Subscriptions의 Request URL 업데이트:
    ```
    https://abc123.ngrok.io/slack/events
    ```
 
-## How It Works
+## 작동 원리
 
-### Workflow
-
-```
-1. User uploads image in Slack
-   ↓
-2. Slack sends file_shared event to /slack/events
-   ↓
-3. Server validates Slack signature (security)
-   ↓
-4. Server responds 200 OK immediately (< 3 seconds)
-   ↓
-5. Background processing starts
-   ↓
-6. Get file info from Slack API
-   ↓
-7. Validate file (type, size, user)
-   ↓
-8. Create database record (status: pending)
-   ↓
-9. Add to processing queue
-   ↓
-10. Download image from Slack (stream)
-    ↓
-11. Upload to Google Drive (stream)
-    ↓
-12. Update database (status: completed)
-    ↓
-13. Send success message to Slack
-```
-
-### Folder Structure
-
-If `CREATE_DATE_FOLDERS=true`, files are organized by date:
+### 워크플로우
 
 ```
-Your Drive Folder/
+1. 사용자가 Slack에 이미지 업로드
+   ↓
+2. Slack이 /slack/events로 file_shared 이벤트 전송
+   ↓
+3. 서버가 Slack 서명 검증 (보안)
+   ↓
+4. 서버가 즉시 200 OK 응답 (3초 이내)
+   ↓
+5. 백그라운드 처리 시작
+   ↓
+6. Slack API에서 파일 정보 조회
+   ↓
+7. 파일 검증 (타입, 크기, 사용자)
+   ↓
+8. 데이터베이스 레코드 생성 (상태: pending)
+   ↓
+9. 처리 큐에 추가
+   ↓
+10. Slack에서 이미지 다운로드 (스트림)
+    ↓
+11. Google Drive에 업로드 (스트림)
+    ↓
+12. 데이터베이스 업데이트 (상태: completed)
+    ↓
+13. Notion에 업로드 내역 기록 (선택 사항)
+    ↓
+14. Slack에 성공 메시지 전송
+```
+
+### 폴더 구조
+
+`CREATE_DATE_FOLDERS=true`인 경우, 파일이 날짜별로 정리됩니다:
+
+```
+Google Drive 폴더/
 ├── 2024-11-07/
 │   ├── image1.png
 │   ├── screenshot_20241107143022.png
@@ -236,35 +282,35 @@ Your Drive Folder/
 │   └── chart.jpg
 ```
 
-### Duplicate Filenames
+### 파일명 중복 처리
 
-If a file with the same name exists, a timestamp is added:
+동일한 이름의 파일이 존재하면 타임스탬프가 추가됩니다:
 
 ```
-Original: image.png
-Duplicate: image_20241107143022.png
+원본: image.png
+중복: image_20241107143022.png
 ```
 
-## API Endpoints
+## API 엔드포인트
 
 ### POST /slack/events
 
-Receives Slack Events API webhooks.
+Slack Events API 웹훅 수신.
 
-**Headers:**
-- `X-Slack-Signature` - Request signature
-- `X-Slack-Request-Timestamp` - Request timestamp
+**헤더:**
+- `X-Slack-Signature` - 요청 서명
+- `X-Slack-Request-Timestamp` - 요청 타임스탬프
 
-**Response:**
-- `200 OK` - Event accepted
-- `401 Unauthorized` - Invalid signature
-- `400 Bad Request` - Invalid payload
+**응답:**
+- `200 OK` - 이벤트 수락
+- `401 Unauthorized` - 잘못된 서명
+- `400 Bad Request` - 잘못된 페이로드
 
 ### GET /health
 
-Health check endpoint with statistics.
+통계가 포함된 헬스 체크 엔드포인트.
 
-**Response:**
+**응답:**
 ```json
 {
   "status": "ok",
@@ -288,11 +334,11 @@ Health check endpoint with statistics.
 }
 ```
 
-## Database
+## 데이터베이스
 
-SQLite database is automatically created at `data/uploads.db`.
+SQLite 데이터베이스가 `data/uploads.db`에 자동 생성됩니다.
 
-### Schema
+### 스키마
 
 ```sql
 CREATE TABLE uploads (
@@ -316,142 +362,173 @@ CREATE TABLE uploads (
 );
 ```
 
-## Logging
+## 로깅
 
-Logs are stored in the `logs/` directory:
+로그는 `logs/` 디렉토리에 저장됩니다:
 
-- `combined.log` - All logs
-- `error.log` - Error logs only
-- `exceptions.log` - Uncaught exceptions
-- `rejections.log` - Unhandled promise rejections
+- `combined.log` - 모든 로그
+- `error.log` - 에러 로그만
+- `exceptions.log` - 포착되지 않은 예외
+- `rejections.log` - 처리되지 않은 Promise 거부
 
-Log levels: `error`, `warn`, `info`, `debug`
+로그 레벨: `error`, `warn`, `info`, `debug`
 
-Set log level in `.env`:
+`.env`에서 로그 레벨 설정:
 ```env
 LOG_LEVEL=info
 ```
 
-## Configuration Options
+## 설정 옵션
 
-### File Upload
+### 파일 업로드
 
 ```env
-# Maximum file size in megabytes (1-1000)
+# 최대 파일 크기 (메가바이트, 1-1000)
 MAX_FILE_SIZE_MB=50
 
-# Allowed image MIME types (comma-separated)
+# 허용된 이미지 MIME 타입 (쉼표로 구분)
 ALLOWED_IMAGE_TYPES=image/jpeg,image/png,image/gif,image/webp,image/bmp
 
-# Create date-based folders (true/false)
+# 날짜별 폴더 생성 (true/false)
 CREATE_DATE_FOLDERS=true
 ```
 
-### Queue
+### 큐
 
 ```env
-# Number of concurrent uploads (1-10)
+# 동시 업로드 개수 (1-10)
 QUEUE_CONCURRENCY=3
 ```
 
-### Retry
+### 재시도
 
 ```env
-# Maximum retry attempts for failed uploads (1-10)
+# 실패한 업로드에 대한 최대 재시도 횟수 (1-10)
 MAX_RETRY_ATTEMPTS=3
 
-# Base delay between retries in milliseconds
-# Uses exponential backoff: 2^attempt * RETRY_DELAY_MS
+# 재시도 간 기본 지연 시간 (밀리초)
+# Exponential backoff 사용: 2^attempt * RETRY_DELAY_MS
 RETRY_DELAY_MS=2000
 ```
 
-### Notifications
+### 알림
 
 ```env
-# Send success message to Slack (true/false)
+# Slack에 성공 메시지 전송 (true/false)
 SEND_COMPLETION_MESSAGE=true
 
-# Send error message to Slack (true/false)
+# Slack에 에러 메시지 전송 (true/false)
 SEND_ERROR_MESSAGE=true
 ```
 
-### User Filtering
+### Notion 로깅
 
-To only accept uploads from a specific user:
+```env
+# Notion 로깅 활성화 (true/false)
+ENABLE_NOTION_LOGGING=false
+
+# Notion Integration API 키 (secret_로 시작)
+NOTION_API_KEY=secret_your_api_key_here
+
+# Notion 데이터베이스 ID (setup-notion-db.js로 생성)
+NOTION_UPLOAD_LOG_DB_ID=your_database_id_here
+```
+
+**Notion 데이터베이스 구조:**
+
+자동 생성되는 데이터베이스에는 다음 속성이 포함됩니다:
+- **Upload ID** (제목) - Slack 파일 ID
+- **Timestamp** - 업로드 시각
+- **File Name** - 파일명
+- **File Size (MB)** - 파일 크기
+- **MIME Type** - 파일 타입
+- **Slack User ID** - 업로드한 사용자 ID
+- **Slack User Name** - 업로드한 사용자 이름
+- **Channel ID** - 업로드된 채널
+- **Drive File ID** - Google Drive 파일 ID
+- **Drive URL** - Drive 링크
+- **Status** - 상태 (Pending/Processing/Completed/Failed)
+- **Error Message** - 에러 메시지 (실패 시)
+- **Retry Count** - 재시도 횟수
+- **Processing Time (ms)** - 처리 시간
+
+### 사용자 필터링
+
+특정 사용자의 업로드만 허용하려면:
 
 ```env
 TARGET_USER_ID=U123456789
 ```
 
-Leave empty to accept all users.
+모든 사용자를 허용하려면 비워두세요.
 
-## Troubleshooting
+## 문제 해결
 
-### Slack Events Not Received
+### Slack 이벤트가 수신되지 않음
 
-**Symptom**: No events arriving at `/slack/events`
+**증상**: `/slack/events`로 이벤트가 도착하지 않음
 
-**Solutions**:
-1. Check Request URL in Slack Event Subscriptions
-2. Verify server is running and accessible
-3. Check ngrok tunnel is active (for local dev)
-4. Review server logs for errors
-5. Ensure Slack app is installed in workspace
+**해결 방법**:
+1. Slack Event Subscriptions의 Request URL 확인
+2. 서버가 실행 중이고 접근 가능한지 확인
+3. ngrok 터널이 활성화되어 있는지 확인 (로컬 개발 시)
+4. 서버 로그에서 에러 확인
+5. Slack 앱이 워크스페이스에 설치되어 있는지 확인
 
-### Invalid Slack Signature
+### 잘못된 Slack 서명
 
-**Symptom**: `401 Unauthorized` errors in logs
+**증상**: 로그에 `401 Unauthorized` 에러
 
-**Solutions**:
-1. Verify `SLACK_SIGNING_SECRET` in `.env`
-2. Check server time is accurate (prevents replay attacks)
-3. Ensure raw body is being captured correctly
+**해결 방법**:
+1. `.env`의 `SLACK_SIGNING_SECRET` 확인
+2. 서버 시간이 정확한지 확인 (재생 공격 방지)
+3. Raw body가 올바르게 캡처되고 있는지 확인
 
-### Google Drive Upload Failed
+### Google Drive 업로드 실패
 
-**Symptom**: Files download from Slack but fail to upload
+**증상**: Slack에서 파일 다운로드는 되지만 업로드 실패
 
-**Solutions**:
-1. Verify `config/google-credentials.json` exists
-2. Check Google Drive API is enabled in Cloud Console
-3. Confirm service account has Editor permission on folder
-4. Verify `GOOGLE_DRIVE_FOLDER_ID` is correct
-5. Check service account email matches JSON key
+**해결 방법**:
+1. `config/google-credentials.json` 파일 존재 확인
+2. Cloud Console에서 Google Drive API 활성화 확인
+3. Service Account에 폴더에 대한 편집자 권한 있는지 확인
+4. `GOOGLE_DRIVE_FOLDER_ID`가 올바른지 확인
+5. Service Account 이메일이 JSON 키와 일치하는지 확인
 
-### File Validation Failed
+### 파일 검증 실패
 
-**Symptom**: Files are ignored or marked as failed
+**증상**: 파일이 무시되거나 실패로 표시됨
 
-**Solutions**:
-1. Check file MIME type is in `ALLOWED_IMAGE_TYPES`
-2. Verify file size is under `MAX_FILE_SIZE_MB`
-3. If `TARGET_USER_ID` is set, ensure user matches
-4. Review validation errors in logs
+**해결 방법**:
+1. 파일 MIME 타입이 `ALLOWED_IMAGE_TYPES`에 포함되어 있는지 확인
+2. 파일 크기가 `MAX_FILE_SIZE_MB` 이하인지 확인
+3. `TARGET_USER_ID`가 설정된 경우 사용자가 일치하는지 확인
+4. 로그에서 검증 에러 확인
 
-### Queue Stuck
+### 큐 멈춤
 
-**Symptom**: Files remain in "processing" status
+**증상**: 파일이 "processing" 상태로 남아있음
 
-**Solutions**:
-1. Check `GET /health` endpoint queue stats
-2. Review error logs for stuck tasks
-3. Restart server to clear queue
-4. Reduce `QUEUE_CONCURRENCY` if overwhelmed
+**해결 방법**:
+1. `GET /health` 엔드포인트로 큐 통계 확인
+2. 멈춘 작업에 대한 에러 로그 확인
+3. 서버 재시작으로 큐 초기화
+4. 과부하인 경우 `QUEUE_CONCURRENCY` 줄이기
 
-## Production Deployment
+## 프로덕션 배포
 
-### Environment Variables
+### 환경 변수
 
-Set `NODE_ENV=production` in production:
+프로덕션에서 `NODE_ENV=production` 설정:
 
 ```env
 NODE_ENV=production
 LOG_LEVEL=warn
 ```
 
-### Process Manager
+### 프로세스 매니저
 
-Use PM2 to keep server running:
+PM2를 사용하여 서버 유지:
 
 ```bash
 npm install -g pm2
@@ -461,9 +538,9 @@ pm2 save
 pm2 startup
 ```
 
-### Reverse Proxy
+### 리버스 프록시
 
-Use nginx to proxy requests:
+nginx를 사용한 요청 프록시:
 
 ```nginx
 server {
@@ -481,100 +558,104 @@ server {
 }
 ```
 
-### SSL Certificate
+### SSL 인증서
 
-Use Let's Encrypt for HTTPS:
+Let's Encrypt를 사용한 HTTPS:
 
 ```bash
 sudo certbot --nginx -d your-domain.com
 ```
 
-## Security Best Practices
+## 보안 모범 사례
 
-1. **Never commit secrets**
-   - Add `.env` to `.gitignore`
-   - Never commit `google-credentials.json`
+1. **비밀 정보 절대 커밋 금지**
+   - `.env`를 `.gitignore`에 추가
+   - `google-credentials.json` 절대 커밋 금지
 
-2. **Use environment variables**
-   - Store all secrets in `.env`
-   - Use different values for dev/production
+2. **환경 변수 사용**
+   - 모든 비밀 정보를 `.env`에 저장
+   - 개발/프로덕션에 다른 값 사용
 
-3. **Enable signature verification**
-   - Always validate Slack signatures
-   - Reject requests older than 5 minutes
+3. **서명 검증 활성화**
+   - 항상 Slack 서명 검증
+   - 5분 이상 된 요청 거부
 
-4. **Limit file access**
-   - Set `TARGET_USER_ID` if needed
-   - Validate all file types and sizes
+4. **파일 접근 제한**
+   - 필요시 `TARGET_USER_ID` 설정
+   - 모든 파일 타입과 크기 검증
 
-5. **Use HTTPS**
-   - Required for Slack webhooks
-   - Use ngrok (dev) or SSL certificate (prod)
+5. **HTTPS 사용**
+   - Slack 웹훅에 필수
+   - ngrok(개발) 또는 SSL 인증서(프로덕션) 사용
 
-6. **Monitor logs**
-   - Regularly review error logs
-   - Set up alerts for failures
+6. **로그 모니터링**
+   - 정기적으로 에러 로그 확인
+   - 실패에 대한 알림 설정
 
-## Development
+## 개발
 
-### Project Structure
+### 프로젝트 구조
 
 ```
 slack_img_automation/
 ├── config/
-│   ├── index.js                 # Configuration management
-│   └── google-credentials.json  # Google Service Account key (gitignored)
+│   ├── index.js                 # 설정 관리
+│   └── google-credentials.json  # Google Service Account 키 (gitignored)
 ├── services/
-│   ├── slackService.js          # Slack API interactions
-│   ├── driveService.js          # Google Drive API interactions
-│   └── queueService.js          # Async queue management
+│   ├── slackService.js          # Slack API 연동
+│   ├── driveService.js          # Google Drive API 연동
+│   ├── queueService.js          # 비동기 큐 관리
+│   └── notionLogger.js          # Notion 업로드 로그
 ├── utils/
-│   ├── logger.js                # Winston logger
-│   ├── database.js              # SQLite database
-│   └── validator.js             # Input validation
+│   ├── logger.js                # Winston 로거
+│   ├── database.js              # SQLite 데이터베이스
+│   └── validator.js             # 입력 검증
 ├── middleware/
-│   └── slackVerification.js     # Slack signature verification
-├── logs/                         # Log files (auto-created)
-├── data/                         # Database files (auto-created)
-├── server.js                     # Main Express server
+│   └── slackVerification.js     # Slack 서명 검증
+├── scripts/
+│   └── setup-notion-db.js       # Notion 데이터베이스 생성
+├── logs/                         # 로그 파일 (자동 생성)
+├── data/                         # 데이터베이스 파일 (자동 생성)
+├── server.js                     # Express 메인 서버
 ├── package.json
-├── .env                          # Environment variables (gitignored)
-├── .env.example                  # Environment template
+├── .env                          # 환경 변수 (gitignored)
+├── .env.example                  # 환경 변수 템플릿
 └── README.md
 ```
 
-### Testing
+### 테스트
 
-Test Slack connection:
+Slack 연결 테스트:
 ```javascript
 const slackService = require('./services/slackService');
 await slackService.testConnection();
 ```
 
-Test Google Drive connection:
+Google Drive 연결 테스트:
 ```javascript
 const driveService = require('./services/driveService');
 await driveService.testConnection();
 ```
 
-## License
+## 라이선스
 
 MIT
 
-## Support
+## 지원
 
-For issues and questions:
-1. Check the troubleshooting section
-2. Review server logs in `logs/`
-3. Check Slack Event Subscriptions status
-4. Verify Google Drive permissions
+문제 및 질문:
+1. 문제 해결 섹션 확인
+2. `logs/`에서 서버 로그 확인
+3. Slack Event Subscriptions 상태 확인
+4. Google Drive 권한 확인
 
-## Credits
+## 크레딧
 
-Built with:
-- [Express.js](https://expressjs.com/) - Web framework
-- [@slack/web-api](https://www.npmjs.com/package/@slack/web-api) - Slack API client
+사용 기술:
+- [Express.js](https://expressjs.com/) - 웹 프레임워크
+- [@slack/web-api](https://www.npmjs.com/package/@slack/web-api) - Slack API 클라이언트
 - [googleapis](https://www.npmjs.com/package/googleapis) - Google Drive API
-- [Winston](https://www.npmjs.com/package/winston) - Logging
-- [better-sqlite3](https://www.npmjs.com/package/better-sqlite3) - SQLite database
-- [async](https://www.npmjs.com/package/async) - Queue management
+- [@notionhq/client](https://www.npmjs.com/package/@notionhq/client) - Notion API 클라이언트
+- [Winston](https://www.npmjs.com/package/winston) - 로깅
+- [better-sqlite3](https://www.npmjs.com/package/better-sqlite3) - SQLite 데이터베이스
+- [async](https://www.npmjs.com/package/async) - 큐 관리
