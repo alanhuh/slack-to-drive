@@ -76,6 +76,9 @@ const logger = winston.createLogger({
       maxsize: 10485760,
       maxFiles: 5,
     }),
+    new winston.transports.Console({
+      format: consoleFormat,
+    }),
   ],
 
   rejectionHandlers: [
@@ -84,17 +87,19 @@ const logger = winston.createLogger({
       maxsize: 10485760,
       maxFiles: 5,
     }),
+    new winston.transports.Console({
+      format: consoleFormat,
+    }),
   ],
 });
 
 /**
- * Add console output in development mode
+ * Add console output (always enabled for better debugging in production)
  */
-if (config.server.nodeEnv !== 'production') {
-  logger.add(new winston.transports.Console({
-    format: consoleFormat,
-  }));
-}
+logger.add(new winston.transports.Console({
+  format: consoleFormat,
+  level: config.server.nodeEnv === 'production' ? 'info' : config.server.logLevel,
+}));
 
 /**
  * Create child logger with additional context

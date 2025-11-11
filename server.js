@@ -421,6 +421,15 @@ async function startServer() {
 
   } catch (error) {
     logger.logError('Failed to start server', error);
+    console.error('\n❌ SERVER STARTUP FAILED:');
+    console.error('Error:', error.message);
+    console.error('Stack:', error.stack);
+    console.error('\nPlease check:');
+    console.error('1. All required environment variables are set');
+    console.error('2. SLACK_BOT_TOKEN is valid and starts with "xoxb-"');
+    console.error('3. Google Drive folder ID is correct');
+    console.error('4. Service account has access to the Drive folder');
+    console.error('5. GOOGLE_CREDENTIALS_BASE64 is properly encoded\n');
     process.exit(1);
   }
 }

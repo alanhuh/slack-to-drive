@@ -123,12 +123,20 @@ function validateConfig() {
 
   if (missing.length > 0) {
     const keys = missing.map(({ key }) => key).join(', ');
-    throw new Error(`Missing required environment variables: ${keys}`);
+    const error = new Error(`Missing required environment variables: ${keys}`);
+    console.error('\n❌ CONFIG VALIDATION FAILED:');
+    console.error(`Missing required environment variables: ${keys}`);
+    console.error('\nPlease set these variables in your .env file or Render dashboard.\n');
+    throw error;
   }
 
   // Validate Slack Bot Token format
   if (!config.slack.botToken.startsWith('xoxb-')) {
-    throw new Error('SLACK_BOT_TOKEN must start with "xoxb-"');
+    const error = new Error('SLACK_BOT_TOKEN must start with "xoxb-"');
+    console.error('\n❌ CONFIG VALIDATION FAILED:');
+    console.error('SLACK_BOT_TOKEN must start with "xoxb-"');
+    console.error(`Current value starts with: ${config.slack.botToken.substring(0, 10)}...\n`);
+    throw error;
   }
 
   // Validate file size
