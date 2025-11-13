@@ -62,6 +62,12 @@ const config = {
     serviceAccountEmail: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
     credentialsPath: process.env.GOOGLE_CREDENTIALS_PATH || './config/google-credentials.json',
     credentialsBase64: process.env.GOOGLE_CREDENTIALS_BASE64 || null,
+    // OAuth 2.0 (replaces Service Account)
+    oauth: {
+      clientId: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      redirectUri: process.env.GOOGLE_REDIRECT_URI || `http://localhost:${parseInteger(process.env.PORT, 3000)}/oauth/callback`,
+    },
   },
 
   // File Upload
@@ -117,6 +123,8 @@ function validateConfig() {
     { key: 'SLACK_SIGNING_SECRET', value: config.slack.signingSecret },
     { key: 'SLACK_BOT_TOKEN', value: config.slack.botToken },
     { key: 'GOOGLE_DRIVE_FOLDER_ID', value: config.drive.folderId },
+    { key: 'GOOGLE_CLIENT_ID', value: config.drive.oauth.clientId },
+    { key: 'GOOGLE_CLIENT_SECRET', value: config.drive.oauth.clientSecret },
   ];
 
   const missing = required.filter(({ value }) => !value);

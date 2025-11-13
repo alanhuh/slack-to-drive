@@ -52,6 +52,19 @@ function initializeDatabase() {
     );
   `;
 
+  const createOAuthTokensTable = `
+    CREATE TABLE IF NOT EXISTS oauth_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      access_token TEXT NOT NULL,
+      refresh_token TEXT NOT NULL,
+      token_type TEXT NOT NULL,
+      expiry_date INTEGER NOT NULL,
+      scope TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `;
+
   const createIndexes = [
     'CREATE INDEX IF NOT EXISTS idx_slack_file_id ON uploads(slack_file_id);',
     'CREATE INDEX IF NOT EXISTS idx_status ON uploads(status);',
@@ -61,6 +74,7 @@ function initializeDatabase() {
 
   try {
     db.exec(createTableSQL);
+    db.exec(createOAuthTokensTable);
     createIndexes.forEach(sql => db.exec(sql));
     logger.info('Database initialized successfully', { path: config.database.path });
   } catch (error) {
@@ -315,6 +329,81 @@ function getUserUploads(userId, limit = 10) {
 }
 
 /**
+ * Save or update OAuth tokens
+ * @param {Object} tokens - Token data from Google OAuth
+ * @returns {number} - Row ID
+ */
+function saveOAuthTokens(tokens) {
+  // Delete existing tokens (we only store one set)
+  db.prepare('DELETE FROM oauth_tokens').run();
+
+  const stmt = db.prepare(`
+    INSERT INTO oauth_tokens (
+      access_token,
+      refresh_token,
+      token_type,
+      expiry_date,
+      scope
+    ) VALUES (?, ?, ?, ?, ?)
+  `);
+
+  try {
+    const info = stmt.run(
+      tokens.access_token,
+      tokens.refresh_token,
+      tokens.token_type || 'Bearer',
+      tokens.expiry_date,
+      tokens.scope || ''
+    );
+
+    logger.info('OAuth tokens saved', { id: info.lastInsertRowid });
+    return info.lastInsertRowid;
+  } catch (error) {
+    logger.logError('Failed to save OAuth tokens', error);
+    throw error;
+  }
+}
+
+/**
+ * Get OAuth tokens
+ * @returns {Object|null} - Token data
+ */
+function getOAuthTokens() {
+  const stmt = db.prepare('SELECT * FROM oauth_tokens ORDER BY created_at DESC LIMIT 1');
+
+  try {
+    const row = stmt.get();
+    if (!row) return null;
+
+    return {
+      access_token: row.access_token,
+      refresh_token: row.refresh_token,
+      token_type: row.token_type,
+      expiry_date: row.expiry_date,
+      scope: row.scope,
+    };
+  } catch (error) {
+    logger.logError('Failed to get OAuth tokens', error);
+    throw error;
+  }
+}
+
+/**
+ * Check if OAuth tokens exist
+ * @returns {boolean}
+ */
+function hasOAuthTokens() {
+  const stmt = db.prepare('SELECT 1 FROM oauth_tokens LIMIT 1');
+
+  try {
+    return !!stmt.get();
+  } catch (error) {
+    logger.logError('Failed to check OAuth tokens', error);
+    return false;
+  }
+}
+
+/**
  * Close database connection
  */
 function closeDatabase() {
@@ -337,5 +426,8 @@ module.exports = {
   deleteOldRecords,
   fileExists,
   getUserUploads,
+  saveOAuthTokens,
+  getOAuthTokens,
+  hasOAuthTokens,
   closeDatabase,
 };

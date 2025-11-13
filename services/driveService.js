@@ -1,61 +1,79 @@
 /**
  * Google Drive Service
- * Handles file uploads to Google Drive with Service Account authentication
+ * Handles file uploads to Google Drive with OAuth 2.0 authentication
  */
 
 const { google } = require('googleapis');
-const fs = require('fs');
 const path = require('path');
 const config = require('../config');
 const logger = require('../utils/logger');
+const database = require('../utils/database');
 const { sanitizeFilename } = require('../utils/validator');
 
 let driveClient = null;
+let oauth2Client = null;
 
 /**
- * Initialize Google Drive client with Service Account
+ * Initialize OAuth2 client
+ * @returns {Object} - OAuth2 client
+ */
+function getOAuth2Client() {
+  if (oauth2Client) {
+    return oauth2Client;
+  }
+
+  oauth2Client = new google.auth.OAuth2(
+    config.drive.oauth.clientId,
+    config.drive.oauth.clientSecret,
+    config.drive.oauth.redirectUri
+  );
+
+  logger.info('OAuth2 client initialized');
+  return oauth2Client;
+}
+
+/**
+ * Initialize Google Drive client with OAuth 2.0
  * @returns {Object} - Google Drive API client
  */
-function initializeDriveClient() {
+async function initializeDriveClient() {
   if (driveClient) {
     return driveClient;
   }
 
   try {
-    // Load service account credentials
-    let credentials;
+    const auth = getOAuth2Client();
 
-    // Check if credentials are provided as base64 (for Render/cloud deployment)
-    if (config.drive.credentialsBase64) {
-      logger.info('Loading Google credentials from base64 environment variable');
-      const credentialsJson = Buffer.from(config.drive.credentialsBase64, 'base64').toString('utf8');
-      credentials = JSON.parse(credentialsJson);
-    } else {
-      // Load from file (for local development)
-      const credentialsPath = path.resolve(config.drive.credentialsPath);
+    // Load tokens from database
+    const tokens = database.getOAuthTokens();
 
-      if (!fs.existsSync(credentialsPath)) {
-        throw new Error(`Google credentials file not found at: ${credentialsPath}`);
-      }
-
-      credentials = JSON.parse(fs.readFileSync(credentialsPath, 'utf8'));
+    if (!tokens) {
+      throw new Error('No OAuth tokens found. Please authenticate first by visiting /oauth/authorize');
     }
 
-    // Create auth client
-    const auth = new google.auth.GoogleAuth({
-      credentials,
-      scopes: [
-        'https://www.googleapis.com/auth/drive.file',
-        'https://www.googleapis.com/auth/drive.metadata.readonly',
-      ],
+    // Set credentials
+    auth.setCredentials(tokens);
+
+    // Set up automatic token refresh
+    auth.on('tokens', (newTokens) => {
+      logger.info('OAuth tokens refreshed automatically');
+
+      // Update tokens in database
+      const updatedTokens = {
+        access_token: newTokens.access_token || tokens.access_token,
+        refresh_token: newTokens.refresh_token || tokens.refresh_token,
+        token_type: newTokens.token_type || tokens.token_type,
+        expiry_date: newTokens.expiry_date,
+        scope: newTokens.scope || tokens.scope,
+      };
+
+      database.saveOAuthTokens(updatedTokens);
     });
 
     // Create Drive client
     driveClient = google.drive({ version: 'v3', auth });
 
-    logger.info('Google Drive client initialized', {
-      serviceAccount: credentials.client_email,
-    });
+    logger.info('Google Drive client initialized with OAuth 2.0');
 
     return driveClient;
   } catch (error) {
@@ -71,7 +89,7 @@ function initializeDriveClient() {
  * @returns {Promise<string>} - Folder ID
  */
 async function getOrCreateDateFolder(parentFolderId, date = new Date()) {
-  const drive = initializeDriveClient();
+  const drive = await initializeDriveClient();
 
   // Format date as YYYY-MM-DD
   const folderName = date.toISOString().split('T')[0];
@@ -126,7 +144,7 @@ async function getOrCreateDateFolder(parentFolderId, date = new Date()) {
  * @returns {Promise<string>} - Unique filename
  */
 async function generateUniqueFilename(folderId, filename) {
-  const drive = initializeDriveClient();
+  const drive = await initializeDriveClient();
 
   try {
     // Check if file exists
@@ -180,7 +198,7 @@ async function generateUniqueFilename(folderId, filename) {
  * @returns {Promise<Object>} - Uploaded file metadata
  */
 async function uploadFile(fileStream, filename, mimeType, options = {}) {
-  const drive = initializeDriveClient();
+  const drive = await initializeDriveClient();
 
   try {
     // Sanitize filename
@@ -249,7 +267,7 @@ async function uploadFile(fileStream, filename, mimeType, options = {}) {
  * @returns {Promise<boolean>} - Success status
  */
 async function deleteFile(fileId) {
-  const drive = initializeDriveClient();
+  const drive = await initializeDriveClient();
 
   try {
     await drive.files.delete({
@@ -270,7 +288,7 @@ async function deleteFile(fileId) {
  * @returns {Promise<Object>} - File metadata
  */
 async function getFileMetadata(fileId) {
-  const drive = initializeDriveClient();
+  const drive = await initializeDriveClient();
 
   try {
     const response = await drive.files.get({
@@ -292,7 +310,7 @@ async function getFileMetadata(fileId) {
  * @returns {Promise<Array>} - Array of file metadata
  */
 async function listFiles(folderId, limit = 100) {
-  const drive = initializeDriveClient();
+  const drive = await initializeDriveClient();
 
   try {
     const response = await drive.files.list({
@@ -314,7 +332,7 @@ async function listFiles(folderId, limit = 100) {
  * @returns {Promise<boolean>} - Success status
  */
 async function testConnection() {
-  const drive = initializeDriveClient();
+  const drive = await initializeDriveClient();
 
   try {
     // Try to get metadata for the target folder
@@ -330,7 +348,7 @@ async function testConnection() {
     }
 
     if (!folder.capabilities || !folder.capabilities.canAddChildren) {
-      throw new Error('Service account does not have permission to add files to folder');
+      throw new Error('OAuth user does not have permission to add files to folder');
     }
 
     logger.info('Drive connection test successful', {
@@ -346,6 +364,7 @@ async function testConnection() {
 }
 
 module.exports = {
+  getOAuth2Client,
   initializeDriveClient,
   uploadFile,
   deleteFile,

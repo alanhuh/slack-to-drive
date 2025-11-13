@@ -40,12 +40,14 @@ app.use(express.json());
 app.get('/health', (req, res) => {
   const stats = database.getStats();
   const queueStats = queueService.getQueueStats();
+  const hasTokens = database.hasOAuthTokens();
 
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     database: 'connected',
+    authenticated: hasTokens,
     queue: {
       pending: queueStats.length,
       processing: queueStats.running,
@@ -61,6 +63,98 @@ app.get('/health', (req, res) => {
       successRate: stats.total > 0 ? ((stats.completed / stats.total) * 100).toFixed(2) : 0,
     },
   });
+});
+
+/**
+ * OAuth authorization endpoint (initiates OAuth flow)
+ */
+app.get('/oauth/authorize', (req, res) => {
+  const oauth2Client = driveService.getOAuth2Client();
+
+  const authUrl = oauth2Client.generateAuthUrl({
+    access_type: 'offline',
+    scope: ['https://www.googleapis.com/auth/drive.file'],
+    prompt: 'consent', // Force consent to get refresh token
+  });
+
+  logger.info('OAuth authorization initiated', { authUrl });
+
+  res.redirect(authUrl);
+});
+
+/**
+ * OAuth callback endpoint (handles OAuth redirect)
+ */
+app.get('/oauth/callback', async (req, res) => {
+  const { code, error } = req.query;
+
+  if (error) {
+    logger.error('OAuth authorization failed', { error });
+    return res.status(400).send(`
+      <html>
+        <head><title>Authorization Failed</title></head>
+        <body style="font-family: Arial; max-width: 600px; margin: 50px auto; text-align: center;">
+          <h1>❌ Authorization Failed</h1>
+          <p>Error: ${error}</p>
+          <p><a href="/oauth/authorize">Try Again</a></p>
+        </body>
+      </html>
+    `);
+  }
+
+  if (!code) {
+    return res.status(400).send(`
+      <html>
+        <head><title>Missing Code</title></head>
+        <body style="font-family: Arial; max-width: 600px; margin: 50px auto; text-align: center;">
+          <h1>❌ Missing Authorization Code</h1>
+          <p><a href="/oauth/authorize">Start Authorization</a></p>
+        </body>
+      </html>
+    `);
+  }
+
+  try {
+    const oauth2Client = driveService.getOAuth2Client();
+
+    // Exchange code for tokens
+    const { tokens } = await oauth2Client.getToken(code);
+
+    logger.info('OAuth tokens received', {
+      hasAccessToken: !!tokens.access_token,
+      hasRefreshToken: !!tokens.refresh_token,
+    });
+
+    // Save tokens to database
+    database.saveOAuthTokens(tokens);
+
+    logger.info('OAuth authorization successful');
+
+    res.send(`
+      <html>
+        <head><title>Authorization Successful</title></head>
+        <body style="font-family: Arial; max-width: 600px; margin: 50px auto; text-align: center;">
+          <h1>✅ Authorization Successful!</h1>
+          <p>Your Google Drive account has been connected.</p>
+          <p>The Slack to Drive uploader is now ready to use.</p>
+          <p><a href="/health">View Health Status</a></p>
+        </body>
+      </html>
+    `);
+  } catch (error) {
+    logger.logError('Failed to exchange OAuth code for tokens', error);
+
+    res.status(500).send(`
+      <html>
+        <head><title>Authorization Error</title></head>
+        <body style="font-family: Arial; max-width: 600px; margin: 50px auto; text-align: center;">
+          <h1>❌ Authorization Error</h1>
+          <p>Failed to complete authorization: ${error.message}</p>
+          <p><a href="/oauth/authorize">Try Again</a></p>
+        </body>
+      </html>
+    `);
+  }
 });
 
 /**
@@ -398,19 +492,26 @@ async function startServer() {
         createDateFolders: config.upload.createDateFolders,
       });
 
+      // Check if OAuth tokens exist
+      const hasTokens = database.hasOAuthTokens();
+      const authStatus = hasTokens ? '✅ Authenticated' : '⚠️  Not Authenticated';
+
       console.log(`
-╔═══════════════════════════════════════════════════════════╗
-║                                                           ║
-║   🚀  Slack to Google Drive Image Uploader               ║
-║                                                           ║
-║   Server running on port ${port}                            ║
-║   Environment: ${config.server.nodeEnv.padEnd(18)}                    ║
-║                                                           ║
-║   Endpoints:                                              ║
-║   POST /slack/events  - Slack Events API                 ║
-║   GET  /health        - Health check                     ║
-║                                                           ║
-╚═══════════════════════════════════════════════════════════╝
+╔═════════════════════════════════════════════════════════════╗
+║                                                             ║
+║   🚀  Slack to Google Drive Image Uploader (OAuth 2.0)     ║
+║                                                             ║
+║   Server running on port ${port}                              ║
+║   Environment: ${config.server.nodeEnv.padEnd(18)}                      ║
+║   Google Drive: ${authStatus.padEnd(20)}                      ║
+║                                                             ║
+║   Endpoints:                                                ║
+║   POST /slack/events      - Slack Events API                ║
+║   GET  /health            - Health check                    ║
+║   GET  /oauth/authorize   - Start OAuth flow                ║
+║   GET  /oauth/callback    - OAuth callback                  ║
+║                                                             ║
+${hasTokens ? '' : '║   ⚠️  Action Required:                                      ║\n║   Visit /oauth/authorize to authenticate with Google       ║\n║                                                             ║\n'}╚═════════════════════════════════════════════════════════════╝
       `);
     });
 
