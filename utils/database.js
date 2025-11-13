@@ -88,7 +88,7 @@ function initializeDatabase() {
 
 /**
  * Load OAuth tokens from environment variables into database
- * This allows tokens to persist across deployments
+ * Environment variables are the source of truth and will always override database tokens
  */
 function loadOAuthTokensFromEnv() {
   const { oauthTokens } = config;
@@ -96,13 +96,6 @@ function loadOAuthTokensFromEnv() {
   // Check if refresh token exists (required for OAuth)
   if (!oauthTokens.refreshToken) {
     logger.debug('No OAuth tokens in environment variables');
-    return;
-  }
-
-  // Check if tokens already exist in database
-  const existingTokens = getOAuthTokens();
-  if (existingTokens) {
-    logger.debug('OAuth tokens already exist in database, skipping env load');
     return;
   }
 
@@ -115,6 +108,8 @@ function loadOAuthTokensFromEnv() {
       scope: oauthTokens.scope,
     };
 
+    // Always load from environment variables if available
+    // This ensures fresh tokens are used after redeployment
     saveOAuthTokens(tokens);
     logger.info('OAuth tokens loaded from environment variables');
   } catch (error) {
