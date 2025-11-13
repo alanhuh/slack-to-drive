@@ -207,35 +207,24 @@ class NotionLogger {
   }
 
   /**
-   * Update upload status in Notion
-   * @param {string} slackFileId - Slack file ID
+   * Update upload status in Notion using REST API
+   * @param {string} pageId - Notion page ID
+   * @param {string} slackFileId - Slack file ID (for logging)
    * @param {Object} updates - Fields to update
    * @returns {Promise<boolean>} - Success status
    */
-  async updateUploadStatus(slackFileId, updates) {
+  async updateUploadStatus(pageId, slackFileId, updates) {
     if (!this.isEnabled()) {
       logger.debug('Notion logging disabled, skipping update');
       return false;
     }
 
+    if (!pageId) {
+      logger.debug('No Notion page ID provided, skipping update');
+      return false;
+    }
+
     try {
-      // Find the page first by querying database
-      const response = await this.client.databases.query({
-        database_id: this.databaseId,
-        filter: {
-          property: 'Upload ID',
-          title: {
-            equals: slackFileId,
-          },
-        },
-      });
-
-      if (response.results.length === 0) {
-        logger.warn('Upload record not found in Notion', { fileId: slackFileId });
-        return false;
-      }
-
-      const pageId = response.results[0].id;
       const properties = {};
 
       // Status update
@@ -280,10 +269,8 @@ class NotionLogger {
         };
       }
 
-      await this.client.pages.update({
-        page_id: pageId,
-        properties,
-      });
+      // Use REST API to update page
+      await this._updatePageViaRestApi(pageId, properties);
 
       logger.info('Notion upload status updated', {
         pageId,
@@ -294,12 +281,73 @@ class NotionLogger {
       return true;
     } catch (error) {
       logger.logError('Failed to update Notion status', error, {
+        pageId,
         fileId: slackFileId,
         updates,
       });
       // Don't fail the main process
       return false;
     }
+  }
+
+  /**
+   * Update Notion page using direct REST API call
+   * @param {string} pageId - Notion page ID
+   * @param {Object} properties - Properties to update
+   * @returns {Promise<Object>} - Updated page object
+   * @private
+   */
+  async _updatePageViaRestApi(pageId, properties) {
+    const https = require('https');
+
+    return new Promise((resolve, reject) => {
+      const data = JSON.stringify({ properties });
+
+      const options = {
+        hostname: 'api.notion.com',
+        path: `/v1/pages/${pageId}`,
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${config.notion.apiKey}`,
+          'Content-Type': 'application/json',
+          'Notion-Version': '2022-06-28',
+          'Content-Length': Buffer.byteLength(data),
+        },
+      };
+
+      const req = https.request(options, (res) => {
+        let responseData = '';
+
+        res.on('data', (chunk) => {
+          responseData += chunk;
+        });
+
+        res.on('end', () => {
+          if (res.statusCode === 200) {
+            try {
+              const parsed = JSON.parse(responseData);
+              resolve(parsed);
+            } catch (error) {
+              reject(new Error(`Failed to parse response: ${error.message}`));
+            }
+          } else {
+            try {
+              const errorData = JSON.parse(responseData);
+              reject(new Error(`Notion API error (${res.statusCode}): ${errorData.message || responseData}`));
+            } catch {
+              reject(new Error(`Notion API error (${res.statusCode}): ${responseData}`));
+            }
+          }
+        });
+      });
+
+      req.on('error', (error) => {
+        reject(error);
+      });
+
+      req.write(data);
+      req.end();
+    });
   }
 
   /**

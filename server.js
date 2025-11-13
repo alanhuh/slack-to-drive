@@ -179,6 +179,10 @@ async function processUploadWithRetry(fileInfo, attempt = 1) {
   const channelId = fileInfo.channels && fileInfo.channels[0];
   const startTime = Date.now();
 
+  // Get upload record to retrieve Notion page ID
+  const uploadRecord = database.getUpload(fileInfo.id);
+  const notionPageId = uploadRecord?.notion_page_id;
+
   try {
     // Update status to processing
     database.updateUpload(fileInfo.id, {
@@ -187,8 +191,8 @@ async function processUploadWithRetry(fileInfo, attempt = 1) {
     });
 
     // Update Notion status to Processing
-    if (notionLogger.isEnabled()) {
-      notionLogger.updateUploadStatus(fileInfo.id, {
+    if (notionLogger.isEnabled() && notionPageId) {
+      notionLogger.updateUploadStatus(notionPageId, fileInfo.id, {
         status: 'Processing',
       }).catch(err => logger.warn('Notion update failed', err));
     }
@@ -223,8 +227,8 @@ async function processUploadWithRetry(fileInfo, attempt = 1) {
     });
 
     // Update Notion status to Completed
-    if (notionLogger.isEnabled()) {
-      notionLogger.updateUploadStatus(fileInfo.id, {
+    if (notionLogger.isEnabled() && notionPageId) {
+      notionLogger.updateUploadStatus(notionPageId, fileInfo.id, {
         status: 'Completed',
         driveFileId: driveFile.id,
         driveUrl: driveFile.url,
@@ -275,8 +279,8 @@ async function processUploadWithRetry(fileInfo, attempt = 1) {
     });
 
     // Update Notion status to Failed
-    if (notionLogger.isEnabled()) {
-      notionLogger.updateUploadStatus(fileInfo.id, {
+    if (notionLogger.isEnabled() && notionPageId) {
+      notionLogger.updateUploadStatus(notionPageId, fileInfo.id, {
         status: 'Failed',
         errorMessage: error.message,
         retryCount: maxAttempts,
@@ -369,18 +373,28 @@ async function handleFileSharedEvent(event) {
       return;
     }
 
-    // Log to Notion (non-blocking)
+    // Log to Notion and save page ID
     if (notionLogger.isEnabled()) {
-      notionLogger.logUpload({
-        slackFileId: file_id,
-        slackUserId: user_id,
-        slackUserName: userInfo.name,
-        channelId: channel_id,
-        filename: fileInfo.name,
-        fileSize: fileInfo.size,
-        mimeType: fileInfo.mimetype,
-        status: 'Pending',
-      }).catch(err => logger.warn('Notion logging failed', err));
+      try {
+        const notionPageId = await notionLogger.logUpload({
+          slackFileId: file_id,
+          slackUserId: user_id,
+          slackUserName: userInfo.name,
+          channelId: channel_id,
+          filename: fileInfo.name,
+          fileSize: fileInfo.size,
+          mimeType: fileInfo.mimetype,
+          status: 'Pending',
+        });
+
+        // Save Notion page ID to database
+        if (notionPageId) {
+          database.updateUpload(file_id, { notion_page_id: notionPageId });
+          logger.info('Notion log created', { fileId: file_id, notionPageId });
+        }
+      } catch (err) {
+        logger.warn('Notion logging failed', err);
+      }
     }
 
     // Add to queue for processing
