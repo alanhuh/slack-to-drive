@@ -478,9 +478,17 @@ async function startServer() {
     logger.info('Testing Slack connection...');
     await slackService.testConnection();
 
-    // Test Drive connection
-    logger.info('Testing Google Drive connection...');
-    await driveService.testConnection();
+    // Test Drive connection (optional - only if OAuth tokens exist)
+    if (database.hasOAuthTokens()) {
+      logger.info('Testing Google Drive connection...');
+      try {
+        await driveService.testConnection();
+      } catch (error) {
+        logger.warn('Drive connection test failed', { error: error.message });
+      }
+    } else {
+      logger.warn('OAuth tokens not found. Please authenticate by visiting /oauth/authorize');
+    }
 
     // Start Express server
     const port = config.server.port;
