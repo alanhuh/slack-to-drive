@@ -244,6 +244,26 @@ npm run dev
 npm start
 ```
 
+### Bulk Upload (과거 메시지 소급 업로드)
+
+과거 Slack 메시지에서 이미지를 소급해서 Drive에 업로드:
+
+```bash
+# 특정 채널의 특정 유저 이미지
+node scripts/bulk-upload-from-slack.js --channel C12345 --user U12345
+
+# 특정 채널의 모든 이미지
+node scripts/bulk-upload-from-slack.js --channel C12345
+
+# 특정 유저의 모든 이미지
+node scripts/bulk-upload-from-slack.js --user U12345
+```
+
+**주의:**
+- 이미 업로드된 파일은 자동으로 건너뜀 (SQLite DB 확인)
+- API Rate Limit 고려하여 배치 처리 (10개씩, 2초 간격)
+- Notion 로깅이 활성화되어 있으면 자동으로 로그 기록
+
 ### 로컬 개발용 ngrok 사용
 
 Slack은 웹훅을 위해 HTTPS가 필요합니다. ngrok을 사용하여 보안 터널 생성:
