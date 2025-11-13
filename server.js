@@ -35,12 +35,7 @@ setInterval(() => {
 app.use(express.json());
 
 /**
- * Apply Slack verification middleware
- */
-app.use(createSlackVerificationMiddleware());
-
-/**
- * Health check endpoint
+ * Health check endpoint (public - no Slack verification)
  */
 app.get('/health', (req, res) => {
   const stats = database.getStats();
@@ -303,9 +298,9 @@ async function handleFileSharedEvent(event) {
 }
 
 /**
- * Slack Events API endpoint
+ * Slack Events API endpoint (with Slack signature verification)
  */
-app.post('/slack/events', async (req, res) => {
+app.post('/slack/events', createSlackVerificationMiddleware(), async (req, res) => {
   const { type, challenge, event, event_id } = req.body;
 
   // URL verification (first-time setup)
