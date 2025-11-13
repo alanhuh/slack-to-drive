@@ -5,7 +5,7 @@ Slack에서 업로드된 이미지를 자동으로 Google Drive에 저장하는 
 ## 주요 기능
 
 - ✅ Slack에서 Google Drive로 이미지 자동 업로드
-- ✅ Service Account 인증 (OAuth 불필요)
+- ✅ OAuth 2.0 인증 (토큰 자동 갱신)
 - ✅ 날짜별 폴더 자동 생성 (YYYY-MM-DD)
 - ✅ 파일명 중복 처리 (타임스탬프 추가)
 - ✅ 파일 검증 (크기, 타입, 사용자)
@@ -17,7 +17,7 @@ Slack에서 업로드된 이미지를 자동으로 Google Drive에 저장하는 
 - ✅ 성공/실패 Slack 알림
 - ✅ 헬스 체크 엔드포인트
 - ✅ Graceful shutdown
-- ✅ Notion 업로드 로그 기록 (선택 사항)
+- ✅ Notion 업로드 로그 기록 (REST API 방식)
 
 ## 사전 준비
 
@@ -63,29 +63,50 @@ Slack에서 업로드된 이미지를 자동으로 Google Drive에 저장하는 
    - "Google Drive API" 검색
    - **Enable** 클릭
 
-#### Service Account 생성
-1. **IAM & Admin** → **Service Accounts** 이동
-2. **Create Service Account** 클릭
-3. 이름 및 설명 입력
-4. **Create and Continue** 클릭
-5. 선택 단계는 건너뛰고 **Done** 클릭
+#### OAuth 2.0 설정 (권장) ⭐
 
-#### JSON 키 생성
-1. 생성한 Service Account 클릭
-2. **Keys** 탭으로 이동
-3. **Add Key** → **Create new key** 클릭
-4. **JSON** 선택
-5. 키 파일 다운로드 → `config/google-credentials.json`으로 저장
+**1. OAuth 동의 화면 구성**
+1. **APIs & Services** → **OAuth consent screen** 이동
+2. User Type: **External** 선택 → **Create**
+3. 앱 정보 입력:
+   - App name: `Slack to Drive Uploader`
+   - User support email: 본인 이메일
+   - Developer contact: 본인 이메일
+4. **Save and Continue**
 
-#### Drive 폴더 공유
-1. Google Drive에서 대상 폴더 생성 또는 열기
+**2. OAuth Client ID 생성**
+1. **APIs & Services** → **Credentials** 이동
+2. **Create Credentials** → **OAuth client ID** 클릭
+3. Application type: **Web application**
+4. Name: `Slack Drive OAuth Client`
+5. Authorized redirect URIs 추가:
+   - 로컬: `http://localhost:3000/oauth/callback`
+   - Render: `https://your-app-name.onrender.com/oauth/callback`
+6. **Create** 클릭
+7. **Client ID**와 **Client Secret** 복사
+
+**3. OAuth 인증 실행**
+
+서버를 시작하고 `/oauth/authorize` 엔드포인트에 접속:
+
+```bash
+npm start
+
+# 브라우저에서 열기:
+http://localhost:3000/oauth/authorize
+```
+
+Google 로그인 후 Drive 접근 권한 승인하면 토큰이 자동으로 생성됩니다.
+터미널에 출력되는 환경 변수를 `.env` 파일에 복사하세요.
+
+**4. Drive 폴더 ID 확인**
+1. Google Drive에서 대상 폴더 열기
 2. URL에서 **Folder ID** 복사:
    ```
    https://drive.google.com/drive/folders/FOLDER_ID_HERE
    ```
-3. 폴더에서 **공유** 클릭
-4. Service Account 이메일 추가 (JSON 키의 `client_email`)
-5. **편집자** 권한 부여
+
+**중요**: OAuth 방식은 로그인한 사용자의 Drive를 사용하므로 별도 폴더 공유 불필요!
 
 ### 4. Notion 설정 (선택 사항)
 
@@ -158,12 +179,25 @@ LOG_LEVEL=info
 # Slack 설정
 SLACK_SIGNING_SECRET=your_slack_signing_secret_here
 SLACK_BOT_TOKEN=xoxb-your-bot-token-here
+SLACK_APP_TOKEN=xapp-your-app-token-here
 
 # 대상 사용자 (선택 - 모든 사용자를 허용하려면 비워두기)
 TARGET_USER_ID=
 
 # Google Drive 설정
 GOOGLE_DRIVE_FOLDER_ID=your_drive_folder_id_here
+
+# OAuth 2.0 설정 (권장)
+GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-client-secret
+GOOGLE_REDIRECT_URI=http://localhost:3000/oauth/callback
+
+# OAuth 토큰 (인증 후 자동 생성됨)
+OAUTH_ACCESS_TOKEN=ya29.a0...
+OAUTH_REFRESH_TOKEN=1//0g...
+OAUTH_TOKEN_TYPE=Bearer
+OAUTH_EXPIRY_DATE=1699999999999
+OAUTH_SCOPE=https://www.googleapis.com/auth/drive
 
 # 파일 업로드 설정
 MAX_FILE_SIZE_MB=50
@@ -181,10 +215,10 @@ QUEUE_CONCURRENCY=3
 SEND_COMPLETION_MESSAGE=true
 SEND_ERROR_MESSAGE=true
 
-# Notion 로깅 (선택 사항 - 사용하지 않으면 비워두기)
-ENABLE_NOTION_LOGGING=false
-NOTION_API_KEY=
-NOTION_UPLOAD_LOG_DB_ID=
+# Notion 로깅 (선택 사항)
+ENABLE_NOTION_LOGGING=true
+NOTION_API_KEY=ntn_your_api_key
+NOTION_UPLOAD_LOG_DB_ID=your_database_id
 ```
 
 ### 4. Google Credentials 추가
@@ -354,6 +388,7 @@ CREATE TABLE uploads (
   drive_file_name TEXT,
   drive_file_url TEXT,
   drive_folder_path TEXT,
+  notion_page_id TEXT,               -- Notion 로그 페이지 ID
   status TEXT NOT NULL,              -- pending/processing/completed/failed
   error_message TEXT,
   retry_count INTEGER DEFAULT 0,
@@ -451,6 +486,12 @@ NOTION_UPLOAD_LOG_DB_ID=your_database_id_here
 - **Error Message** - 에러 메시지 (실패 시)
 - **Retry Count** - 재시도 횟수
 - **Processing Time (ms)** - 처리 시간
+
+**구현 방식:**
+- Notion SDK 대신 **REST API 직접 호출** 방식 사용
+- `pages.create()` - 초기 로그 생성
+- `PATCH /v1/pages/{pageId}` - 상태 업데이트 (Node.js https 모듈)
+- pageId를 SQLite DB에 저장하여 추적
 
 ### 사용자 필터링
 
@@ -569,8 +610,18 @@ Render Dashboard에서 **Environment** 탭으로 이동하여 다음 변수 추�
 ```
 SLACK_SIGNING_SECRET=your_slack_signing_secret
 SLACK_BOT_TOKEN=xoxb-your-bot-token
+SLACK_APP_TOKEN=xapp-your-app-token
 GOOGLE_DRIVE_FOLDER_ID=your_folder_id
-GOOGLE_CREDENTIALS_BASE64=your_base64_encoded_credentials
+
+# OAuth 2.0 방식 (권장)
+GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-client-secret
+GOOGLE_REDIRECT_URI=https://your-app-name.onrender.com/oauth/callback
+OAUTH_ACCESS_TOKEN=ya29.a0...
+OAUTH_REFRESH_TOKEN=1//0g...
+OAUTH_TOKEN_TYPE=Bearer
+OAUTH_EXPIRY_DATE=1699999999999
+OAUTH_SCOPE=https://www.googleapis.com/auth/drive
 ```
 
 **선택 변수:**
@@ -579,9 +630,15 @@ TARGET_USER_ID=U123456789
 MAX_FILE_SIZE_MB=50
 QUEUE_CONCURRENCY=3
 ENABLE_NOTION_LOGGING=true
-NOTION_API_KEY=secret_your_api_key
+NOTION_API_KEY=ntn_your_api_key
 NOTION_UPLOAD_LOG_DB_ID=your_database_id
 ```
+
+**OAuth 토큰 설정 방법:**
+1. 로컬에서 먼저 `/oauth/authorize`로 인증
+2. 터미널에 출력되는 토큰 값들을 복사
+3. Render Environment 탭에 붙여넣기
+4. 재배포 시 자동으로 DB에 로드됨
 
 #### 5. 배포 및 URL 확인
 
