@@ -73,7 +73,7 @@ app.get('/oauth/authorize', (req, res) => {
 
   const authUrl = oauth2Client.generateAuthUrl({
     access_type: 'offline',
-    scope: ['https://www.googleapis.com/auth/drive.file'],
+    scope: ['https://www.googleapis.com/auth/drive'],
     prompt: 'consent', // Force consent to get refresh token
   });
 
@@ -136,7 +136,7 @@ app.get('/oauth/callback', async (req, res) => {
     console.log(`OAUTH_REFRESH_TOKEN=${tokens.refresh_token}`);
     console.log(`OAUTH_TOKEN_TYPE=${tokens.token_type || 'Bearer'}`);
     console.log(`OAUTH_EXPIRY_DATE=${tokens.expiry_date}`);
-    console.log(`OAUTH_SCOPE=${tokens.scope || 'https://www.googleapis.com/auth/drive.file'}`);
+    console.log(`OAUTH_SCOPE=${tokens.scope || 'https://www.googleapis.com/auth/drive'}`);
     console.log('='.repeat(80));
     console.log('These tokens will persist across deployments once added to Render.\n');
 
