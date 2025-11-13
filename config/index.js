@@ -112,6 +112,15 @@ const config = {
     uploadLogDbId: process.env.NOTION_UPLOAD_LOG_DB_ID || '',
     enabled: parseBoolean(process.env.ENABLE_NOTION_LOGGING, false),
   },
+
+  // OAuth Tokens (Optional - for persisting across deployments)
+  oauthTokens: {
+    accessToken: process.env.OAUTH_ACCESS_TOKEN || '',
+    refreshToken: process.env.OAUTH_REFRESH_TOKEN || '',
+    tokenType: process.env.OAUTH_TOKEN_TYPE || 'Bearer',
+    expiryDate: process.env.OAUTH_EXPIRY_DATE ? parseInt(process.env.OAUTH_EXPIRY_DATE, 10) : null,
+    scope: process.env.OAUTH_SCOPE || '',
+  },
 };
 
 /**

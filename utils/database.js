@@ -77,9 +77,48 @@ function initializeDatabase() {
     db.exec(createOAuthTokensTable);
     createIndexes.forEach(sql => db.exec(sql));
     logger.info('Database initialized successfully', { path: config.database.path });
+
+    // Load OAuth tokens from environment variables if available
+    loadOAuthTokensFromEnv();
   } catch (error) {
     logger.logError('Failed to initialize database', error);
     throw error;
+  }
+}
+
+/**
+ * Load OAuth tokens from environment variables into database
+ * This allows tokens to persist across deployments
+ */
+function loadOAuthTokensFromEnv() {
+  const { oauthTokens } = config;
+
+  // Check if refresh token exists (required for OAuth)
+  if (!oauthTokens.refreshToken) {
+    logger.debug('No OAuth tokens in environment variables');
+    return;
+  }
+
+  // Check if tokens already exist in database
+  const existingTokens = getOAuthTokens();
+  if (existingTokens) {
+    logger.debug('OAuth tokens already exist in database, skipping env load');
+    return;
+  }
+
+  try {
+    const tokens = {
+      access_token: oauthTokens.accessToken,
+      refresh_token: oauthTokens.refreshToken,
+      token_type: oauthTokens.tokenType,
+      expiry_date: oauthTokens.expiryDate,
+      scope: oauthTokens.scope,
+    };
+
+    saveOAuthTokens(tokens);
+    logger.info('OAuth tokens loaded from environment variables');
+  } catch (error) {
+    logger.logError('Failed to load OAuth tokens from environment', error);
   }
 }
 

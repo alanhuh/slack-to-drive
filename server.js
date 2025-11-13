@@ -128,6 +128,18 @@ app.get('/oauth/callback', async (req, res) => {
     // Save tokens to database
     database.saveOAuthTokens(tokens);
 
+    // Log tokens for user to copy to environment variables
+    console.log('\n' + '='.repeat(80));
+    console.log('📋 COPY THESE TOKENS TO RENDER ENVIRONMENT VARIABLES:');
+    console.log('='.repeat(80));
+    console.log(`OAUTH_ACCESS_TOKEN=${tokens.access_token}`);
+    console.log(`OAUTH_REFRESH_TOKEN=${tokens.refresh_token}`);
+    console.log(`OAUTH_TOKEN_TYPE=${tokens.token_type || 'Bearer'}`);
+    console.log(`OAUTH_EXPIRY_DATE=${tokens.expiry_date}`);
+    console.log(`OAUTH_SCOPE=${tokens.scope || 'https://www.googleapis.com/auth/drive.file'}`);
+    console.log('='.repeat(80));
+    console.log('These tokens will persist across deployments once added to Render.\n');
+
     logger.info('OAuth authorization successful');
 
     res.send(`
