@@ -264,6 +264,56 @@ node scripts/bulk-upload-from-slack.js --user U12345
 - API Rate Limit 고려하여 배치 처리 (10개씩, 2초 간격)
 - Notion 로깅이 활성화되어 있으면 자동으로 로그 기록
 
+### PM2 사용 (프로덕션 권장)
+
+PM2를 사용하면 자동 재시작, 로그 관리, 모니터링 등을 제공합니다:
+
+#### PM2 설치
+
+```bash
+npm install -g pm2
+```
+
+#### PM2로 서버 실행
+
+```bash
+# 서버 시작
+npm run pm2:start
+
+# 서버 중지
+npm run pm2:stop
+
+# 서버 재시작
+npm run pm2:restart
+
+# 로그 확인
+npm run pm2:logs
+
+# 실시간 모니터링
+npm run pm2:monit
+
+# 상태 확인
+npm run pm2:status
+
+# 서버 삭제
+npm run pm2:delete
+```
+
+#### PM2 주요 기능
+
+- **자동 재시작**: 크래시 시 자동 복구
+- **메모리 관리**: 400MB 초과 시 자동 재시작
+- **로그 관리**: `logs/` 폴더에 자동 저장
+- **Graceful Shutdown**: 진행 중인 업로드 완료 후 종료
+- **프로세스 모니터링**: CPU, 메모리 사용량 실시간 확인
+
+#### PM2 설정 파일
+
+`ecosystem.config.js` 파일에서 설정 변경 가능:
+- `max_memory_restart`: 메모리 제한 (기본: 400MB)
+- `max_restarts`: 최대 재시도 횟수 (기본: 10회)
+- `min_uptime`: 안정 상태 판단 시간 (기본: 10초)
+
 ### 로컬 개발용 ngrok 사용
 
 Slack은 웹훅을 위해 HTTPS가 필요합니다. ngrok을 사용하여 보안 터널 생성:
@@ -666,7 +716,31 @@ NOTION_UPLOAD_LOG_DB_ID=your_database_id
 2. 자동 배포 시작 (5-10분 소요)
 3. 배포 완료 후 URL 확인: `https://your-app-name.onrender.com`
 
-#### 6. Slack Event URL 업데이트
+#### 6. Render 권장 설정 (안정성 향상)
+
+Render 대시보드에서 다음 설정을 권장합니다:
+
+**Health Check 설정:**
+- Health Check Path: `/health`
+- Health Check Interval: `30` (초)
+- Auto-Deploy: `Yes` (자동 배포 활성화)
+
+**Build & Deploy:**
+- Build Command: `npm install`
+- Start Command: `npm start` 또는 `npm run pm2:start` (PM2 사용 시)
+
+**무료 플랜 제약:**
+- 15분 비활성 시 sleep mode 진입
+- UptimeRobot 등 외부 모니터링 서비스로 5분마다 `/health` 핑 권장
+- 메모리: 512MB (PM2 설정 `max_memory_restart: 400M` 권장)
+- 월 750시간 런타임 (31.25일, 충분함)
+
+**로그 확인:**
+- Render 대시보드 → Logs 탭
+- 다운타임 발생 시 로그에서 원인 파악 가능
+- `Health check requested` 로그로 UptimeRobot 핑 확인
+
+#### 7. Slack Event URL 업데이트
 
 1. [Slack API Apps](https://api.slack.com/apps) 접속
 2. 앱 선택 → **Event Subscriptions**

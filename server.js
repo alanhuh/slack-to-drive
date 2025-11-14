@@ -42,6 +42,14 @@ app.get('/health', (req, res) => {
   const queueStats = queueService.getQueueStats();
   const hasTokens = database.hasOAuthTokens();
 
+  // Log health check for monitoring (UptimeRobot pings)
+  logger.debug('Health check requested', {
+    uptime: Math.floor(process.uptime()),
+    authenticated: hasTokens,
+    queuePending: queueStats.length,
+    queueProcessing: queueStats.running,
+  });
+
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
@@ -518,7 +526,7 @@ async function startServer() {
 
     // Start Express server
     const port = config.server.port;
-    app.listen(port, () => {
+    app.listen(port, '0.0.0.0', () => {
       logger.info(`Server started successfully`, {
         port,
         nodeEnv: config.server.nodeEnv,
@@ -594,15 +602,16 @@ process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 // Handle uncaught errors
 process.on('uncaughtException', (error) => {
-  logger.logError('Uncaught exception', error);
-  process.exit(1);
+  logger.logError('Uncaught exception - initiating graceful shutdown', error);
+  gracefulShutdown('UNCAUGHT_EXCEPTION');
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  logger.error('Unhandled rejection', {
+  logger.logError('Unhandled rejection - initiating graceful shutdown', {
     reason,
     promise,
   });
+  gracefulShutdown('UNHANDLED_REJECTION');
 });
 
 // Start the server

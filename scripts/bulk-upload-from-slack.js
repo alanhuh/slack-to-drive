@@ -64,13 +64,23 @@ async function fetchSlackFiles() {
   while (hasMore) {
     logger.info(`Fetching page ${page}...`);
 
-    const response = await slackService.client.files.list(params);
+    const response = await slackService.slackClient.files.list(params);
+
+    // 응답 확인
+    if (!response) {
+      throw new Error('No response from Slack API');
+    }
+
+    logger.info('Slack API response', { ok: response.ok, hasFiles: !!response.files, filesCount: response.files?.length });
 
     if (!response.ok) {
       throw new Error(`Slack API error: ${response.error}`);
     }
 
-    allFiles.push(...response.files);
+    // response.files가 없으면 빈 배열 사용
+    if (response.files && response.files.length > 0) {
+      allFiles.push(...response.files);
+    }
 
     // 페이지네이션 처리
     const paging = response.paging;
@@ -111,12 +121,12 @@ async function uploadFile(file) {
     // 1. 데이터베이스 레코드 생성
     const userInfo = await slackService.getUserInfo(userId);
 
-    database.createUpload({
+    database.insertUpload({
       slackFileId: fileId,
       slackUserId: userId,
       slackUserName: userInfo.name,
       channelId: channelId || 'unknown',
-      filename,
+      originalFilename: filename,
       fileSize,
       mimeType,
       status: 'pending',
