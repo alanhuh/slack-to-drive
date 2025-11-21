@@ -14,6 +14,10 @@ const driveService = require('./services/driveService');
 const queueService = require('./services/queueService');
 const notionLogger = require('./services/notionLogger');
 
+// AI Classification system (optional)
+const analysisAgent = require('./services/agents/analysisAgent');
+const interactiveHandler = require('./services/interactiveHandler');
+
 // Initialize Express app
 const app = express();
 
@@ -33,6 +37,11 @@ setInterval(() => {
  * Parse JSON bodies
  */
 app.use(express.json());
+
+/**
+ * Parse URL-encoded bodies (for Slack interactive components)
+ */
+app.use(express.urlencoded({ extended: true }));
 
 /**
  * Health check endpoint (public - no Slack verification)
@@ -258,6 +267,36 @@ async function processUploadWithRetry(fileInfo, attempt = 1) {
         fileSize: fileInfo.size,
         driveFileUrl: driveFile.url,
       });
+    }
+
+    // AI Classification (if enabled)
+    if (config.classification.enabled && config.vision.enabled) {
+      try {
+        logger.info('Starting AI classification', { fileId: fileInfo.id });
+
+        // Analyze image and suggest classification
+        const classificationResult = await analysisAgent.analyze(fileInfo);
+
+        // Send interactive message to Slack
+        if (channelId && classificationResult) {
+          await slackService.sendClassificationMessage(
+            channelId,
+            classificationResult,
+            fileInfo.id
+          );
+
+          logger.info('Classification message sent', {
+            fileId: fileInfo.id,
+            category: classificationResult.category,
+            confidence: classificationResult.confidence,
+          });
+        }
+      } catch (classError) {
+        logger.logError('Classification failed - continuing without classification', classError, {
+          fileId: fileInfo.id,
+        });
+        // Don't fail the upload if classification fails
+      }
     }
 
   } catch (error) {
@@ -489,6 +528,40 @@ app.post('/slack/events', createSlackVerificationMiddleware(), async (req, res) 
 });
 
 /**
+ * Slack Interactive Components endpoint (with Slack signature verification)
+ * Handles button clicks, menu selections, and other interactive actions
+ */
+app.post('/slack/interactive', createSlackVerificationMiddleware(), async (req, res) => {
+  try {
+    // Parse the payload (Slack sends it as form-encoded)
+    const payload = JSON.parse(req.body.payload);
+
+    logger.info('Interactive action received', {
+      type: payload.type,
+      actionId: payload.actions?.[0]?.action_id,
+      userId: payload.user?.id,
+    });
+
+    // Acknowledge immediately (Slack requires response within 3 seconds)
+    res.status(200).send('');
+
+    // Handle interaction in background
+    setImmediate(() => {
+      interactiveHandler.handleInteraction(payload).catch(error => {
+        logger.logError('Interactive handler error', error, {
+          type: payload.type,
+          userId: payload.user?.id,
+        });
+      });
+    });
+
+  } catch (error) {
+    logger.logError('Failed to parse interactive payload', error);
+    res.status(400).json({ error: 'Invalid payload' });
+  }
+});
+
+/**
  * Error handling middleware
  */
 app.use((error, req, res, next) => {
@@ -538,6 +611,10 @@ async function startServer() {
       const hasTokens = database.hasOAuthTokens();
       const authStatus = hasTokens ? '✅ Authenticated' : '⚠️  Not Authenticated';
 
+      // Feature flags
+      const classificationEnabled = config.classification.enabled && config.vision.enabled;
+      const classificationStatus = classificationEnabled ? '✅ Enabled' : '⚪ Disabled';
+
       console.log(`
 ╔═════════════════════════════════════════════════════════════╗
 ║                                                             ║
@@ -546,12 +623,14 @@ async function startServer() {
 ║   Server running on port ${port}                              ║
 ║   Environment: ${config.server.nodeEnv.padEnd(18)}                      ║
 ║   Google Drive: ${authStatus.padEnd(20)}                      ║
+║   AI Classification: ${classificationStatus.padEnd(16)}                      ║
 ║                                                             ║
 ║   Endpoints:                                                ║
-║   POST /slack/events      - Slack Events API                ║
-║   GET  /health            - Health check                    ║
-║   GET  /oauth/authorize   - Start OAuth flow                ║
-║   GET  /oauth/callback    - OAuth callback                  ║
+║   POST /slack/events        - Slack Events API              ║
+║   POST /slack/interactive   - Interactive Components        ║
+║   GET  /health              - Health check                  ║
+║   GET  /oauth/authorize     - Start OAuth flow              ║
+║   GET  /oauth/callback      - OAuth callback                ║
 ║                                                             ║
 ${hasTokens ? '' : '║   ⚠️  Action Required:                                      ║\n║   Visit /oauth/authorize to authenticate with Google       ║\n║                                                             ║\n'}╚═════════════════════════════════════════════════════════════╝
       `);

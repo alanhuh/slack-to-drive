@@ -77,6 +77,11 @@ function initializeDatabase() {
     db.exec(createTableSQL);
     db.exec(createOAuthTokensTable);
     createIndexes.forEach(sql => db.exec(sql));
+
+    // Run migrations for classification features
+    migrateClassificationColumns();
+    createClassificationTables();
+
     logger.info('Database initialized successfully', { path: config.database.path });
 
     // Load OAuth tokens from environment variables if available
@@ -84,6 +89,94 @@ function initializeDatabase() {
   } catch (error) {
     logger.logError('Failed to initialize database', error);
     throw error;
+  }
+}
+
+/**
+ * Migrate uploads table to add classification columns
+ */
+function migrateClassificationColumns() {
+  const newColumns = [
+    { name: 'classification_method', type: 'TEXT' },
+    { name: 'vision_labels', type: 'TEXT' }, // JSON array
+    { name: 'detected_text', type: 'TEXT' },
+    { name: 'ai_category', type: 'TEXT' },
+    { name: 'ai_confidence', type: 'REAL' },
+    { name: 'suggested_filename', type: 'TEXT' },
+    { name: 'classification_context', type: 'TEXT' }, // JSON string
+    { name: 'classification_result', type: 'TEXT' }, // JSON string
+    { name: 'user_category', type: 'TEXT' },
+    { name: 'final_filename', type: 'TEXT' },
+    { name: 'category_folder_id', type: 'TEXT' },
+    { name: 'category_file_id', type: 'TEXT' },
+    { name: 'category_file_url', type: 'TEXT' },
+    { name: 'classification_notion_page_id', type: 'TEXT' },
+    { name: 'feedback_type', type: 'TEXT' },
+    { name: 'feedback_tracked', type: 'INTEGER DEFAULT 0' },
+    { name: 'organized_at', type: 'DATETIME' }
+  ];
+
+  for (const column of newColumns) {
+    try {
+      // Check if column exists
+      const checkColumn = db.prepare(`PRAGMA table_info(uploads)`);
+      const columns = checkColumn.all();
+      const exists = columns.some(col => col.name === column.name);
+
+      if (!exists) {
+        const alterSQL = `ALTER TABLE uploads ADD COLUMN ${column.name} ${column.type}`;
+        db.exec(alterSQL);
+        logger.debug(`Added column: ${column.name}`);
+      }
+    } catch (error) {
+      // Column might already exist, continue
+      logger.debug(`Column ${column.name} migration skipped:`, error.message);
+    }
+  }
+}
+
+/**
+ * Create classification-related tables
+ */
+function createClassificationTables() {
+  // Classification feedback table
+  const createFeedbackTable = `
+    CREATE TABLE IF NOT EXISTS classification_feedback (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      file_id TEXT NOT NULL,
+      ai_category TEXT,
+      ai_confidence REAL,
+      user_category TEXT,
+      feedback_type TEXT,
+      context TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (file_id) REFERENCES uploads(slack_file_id)
+    );
+  `;
+
+  // Category folders cache table
+  const createCategoryFoldersTable = `
+    CREATE TABLE IF NOT EXISTS category_folders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      category_name TEXT UNIQUE NOT NULL,
+      folder_id TEXT NOT NULL,
+      file_count INTEGER DEFAULT 0,
+      last_updated DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `;
+
+  try {
+    db.exec(createFeedbackTable);
+    db.exec(createCategoryFoldersTable);
+
+    // Create indexes
+    db.exec('CREATE INDEX IF NOT EXISTS idx_feedback_file_id ON classification_feedback(file_id);');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_feedback_type ON classification_feedback(feedback_type);');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_category_folders_name ON category_folders(category_name);');
+
+    logger.debug('Classification tables created successfully');
+  } catch (error) {
+    logger.debug('Classification tables migration skipped:', error.message);
   }
 }
 
@@ -185,6 +278,24 @@ function updateUpload(slackFileId, updates) {
     'error_message',
     'retry_count',
     'uploaded_at',
+    // Classification fields
+    'classification_method',
+    'vision_labels',
+    'detected_text',
+    'ai_category',
+    'ai_confidence',
+    'suggested_filename',
+    'classification_context',
+    'classification_result',
+    'user_category',
+    'final_filename',
+    'category_folder_id',
+    'category_file_id',
+    'category_file_url',
+    'classification_notion_page_id',
+    'feedback_type',
+    'feedback_tracked',
+    'organized_at',
   ];
 
   const fields = Object.keys(updates).filter(key => allowedFields.includes(key));

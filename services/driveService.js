@@ -373,4 +373,11 @@ module.exports = {
   getOrCreateDateFolder,
   generateUniqueFilename,
   testConnection,
+  // Expose drive client with lazy initialization
+  get drive() {
+    if (!driveClient) {
+      throw new Error('Drive client not initialized. Call initializeDriveClient() first or use uploadFile() which auto-initializes.');
+    }
+    return driveClient;
+  }
 };

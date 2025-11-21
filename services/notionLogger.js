@@ -31,6 +31,19 @@ class NotionLogger {
   }
 
   /**
+   * Check if Classification logging is enabled
+   * @returns {boolean}
+   */
+  isClassificationEnabled() {
+    return (
+      config.notion.classificationLoggingEnabled &&
+      this.client !== null &&
+      config.notion.classificationLogDbId !== null &&
+      config.notion.classificationLogDbId !== ''
+    );
+  }
+
+  /**
    * Create upload log database (run once during setup)
    * @param {string} parentPageId - Parent Notion page ID
    * @returns {Promise<string>} - Created database ID
@@ -387,6 +400,169 @@ class NotionLogger {
     } catch (error) {
       logger.logError('Notion connection test failed', error);
       throw error;
+    }
+  }
+
+  /**
+   * Log classification to separate Notion DB
+   * @param {Object} data - Classification data
+   * @returns {Promise<string|null>} - Created page ID or null
+   */
+  async logClassification(data) {
+    if (!this.isClassificationEnabled()) {
+      logger.debug('Classification logging disabled, skipping');
+      return null;
+    }
+
+    const classificationDbId = config.notion.classificationLogDbId;
+
+    try {
+      const properties = {
+        'File ID': {
+          title: [{ text: { content: data.fileId || '' } }],
+        },
+        'Original Filename': {
+          rich_text: [{ text: { content: this.truncate(data.originalFilename, 2000) } }],
+        },
+        'Category': {
+          select: { name: data.category || 'Unknown' },
+        },
+        'Confidence': {
+          number: data.confidence || 0,
+        },
+        'Classification Method': {
+          select: { name: data.method || 'unknown' },
+        },
+        'Suggested Filename': {
+          rich_text: [{ text: { content: this.truncate(data.suggestedFilename || '', 2000) } }],
+        },
+        'Final Filename': {
+          rich_text: [{ text: { content: this.truncate(data.finalFilename || data.suggestedFilename || '', 2000) } }],
+        },
+        'User': {
+          rich_text: [{ text: { content: data.userName || '' } }],
+        },
+        'Channel': {
+          rich_text: [{ text: { content: data.channelId || '' } }],
+        },
+        'Classified At': {
+          date: { start: new Date().toISOString() },
+        },
+      };
+
+      // Optional fields
+      if (data.dateFolderUrl) {
+        properties['Date Folder URL'] = { url: data.dateFolderUrl };
+      }
+
+      if (data.categoryFolderUrl) {
+        properties['Category Folder URL'] = { url: data.categoryFolderUrl };
+      }
+
+      if (data.userFeedback) {
+        properties['User Feedback'] = { select: { name: data.userFeedback } };
+      }
+
+      if (data.visionLabels && data.visionLabels.length > 0) {
+        properties['Vision Labels'] = {
+          multi_select: data.visionLabels.slice(0, 10).map(label => ({ name: this.truncate(label, 100) })),
+        };
+      }
+
+      if (data.detectedText) {
+        properties['Detected Text'] = {
+          rich_text: [{ text: { content: this.truncate(data.detectedText, 2000) } }],
+        };
+      }
+
+      if (data.slackContext) {
+        properties['Slack Context'] = {
+          rich_text: [{ text: { content: this.truncate(data.slackContext, 2000) } }],
+        };
+      }
+
+      if (data.processingTime !== undefined) {
+        properties['Processing Time'] = {
+          number: data.processingTime,
+        };
+      }
+
+      const page = await this.client.pages.create({
+        parent: { database_id: classificationDbId },
+        properties: properties,
+      });
+
+      logger.info('Classification logged to Notion', {
+        fileId: data.fileId,
+        pageId: page.id,
+        category: data.category,
+      });
+
+      return page.id;
+    } catch (error) {
+      logger.logError('Failed to log classification to Notion', error, data);
+      return null;
+    }
+  }
+
+  /**
+   * Update classification log with user feedback
+   * @param {string} pageId - Notion page ID
+   * @param {Object} feedback - User feedback data
+   * @returns {Promise<boolean>} - Success status
+   */
+  async updateClassificationFeedback(pageId, feedback) {
+    if (!this.isClassificationEnabled()) {
+      logger.debug('Classification logging disabled, skipping update');
+      return false;
+    }
+
+    if (!pageId) {
+      logger.debug('No Notion page ID provided, skipping update');
+      return false;
+    }
+
+    try {
+      const properties = {};
+
+      if (feedback.type) {
+        properties['User Feedback'] = {
+          select: { name: feedback.type },
+        };
+      }
+
+      if (feedback.finalFilename) {
+        properties['Final Filename'] = {
+          rich_text: [{ text: { content: this.truncate(feedback.finalFilename, 2000) } }],
+        };
+      }
+
+      if (feedback.finalCategory) {
+        properties['Category'] = {
+          select: { name: feedback.finalCategory },
+        };
+      }
+
+      if (feedback.categoryFolderUrl) {
+        properties['Category Folder URL'] = {
+          url: feedback.categoryFolderUrl,
+        };
+      }
+
+      await this._updatePageViaRestApi(pageId, properties);
+
+      logger.info('Classification feedback updated in Notion', {
+        pageId,
+        feedbackType: feedback.type,
+      });
+
+      return true;
+    } catch (error) {
+      logger.logError('Failed to update classification feedback', error, {
+        pageId,
+        feedback,
+      });
+      return false;
     }
   }
 }

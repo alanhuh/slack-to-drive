@@ -353,6 +353,60 @@ async function updateMessage(channelId, messageTs, text, blocks = null) {
 }
 
 /**
+ * Send classification confirmation message
+ * @param {string} channelId - Channel ID
+ * @param {Object} classification - Classification result
+ * @param {string} fileId - File ID
+ * @returns {Promise}
+ */
+async function sendClassificationMessage(channelId, classification, fileId) {
+  try {
+    const messageBuilder = require('./messageBuilder');
+    const message = messageBuilder.buildClassificationBlocks(classification, fileId);
+
+    logger.logApiCall('slack', 'chat.postMessage', {
+      channelId,
+      category: classification.category
+    });
+
+    const params = {
+      channel: channelId,
+      text: message.text,
+      blocks: message.blocks,
+    };
+
+    // Add metadata if supported
+    if (message.metadata) {
+      params.metadata = message.metadata;
+    }
+
+    const response = await slackClient.chat.postMessage(params);
+
+    if (!response.ok) {
+      throw new Error(`Slack API error: ${response.error}`);
+    }
+
+    logger.info('Classification message sent to Slack', {
+      channelId,
+      messageTs: response.ts,
+      category: classification.category,
+      confidence: classification.confidence,
+    });
+
+    return {
+      ts: response.ts,
+      channel: response.channel,
+    };
+  } catch (error) {
+    logger.logError('Failed to send classification message to Slack', error, {
+      channelId,
+      fileId,
+    });
+    throw error;
+  }
+}
+
+/**
  * Test Slack connection
  * @returns {Promise<Object>} - Auth test response
  */
@@ -392,6 +446,7 @@ module.exports = {
   sendMessage,
   sendCompletionMessage,
   sendErrorMessage,
+  sendClassificationMessage,
   sendTyping,
   updateMessage,
   formatFileSize,

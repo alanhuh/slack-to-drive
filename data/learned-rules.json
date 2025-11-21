@@ -1,0 +1,78 @@
+{
+  "캐릭터 일러스트 (단독)": {
+    "requiredLabels": [
+      "Animation",
+      "Fictional character",
+      "Fiction",
+      "Anime",
+      "Animated cartoon",
+      "Hero"
+    ],
+    "recommendedLabels": [
+      "Cartoon",
+      "Costume",
+      "Graphics",
+      "CG artwork"
+    ],
+    "antiLabels": [],
+    "hasText": true,
+    "avgTextLength": 89,
+    "medianTextLength": 84,
+    "textLengthThreshold": 84,
+    "recommendedPriority": 0.87,
+    "sampleSize": 30,
+    "avgConfidence": 0.38819388169599994
+  },
+  "일러스트 (단체)": {
+    "requiredLabels": [
+      "Animation",
+      "Fiction",
+      "Fictional character",
+      "Animated cartoon",
+      "Anime",
+      "Cartoon"
+    ],
+    "recommendedLabels": [
+      "Hero",
+      "CG artwork",
+      "Graphics",
+      "PC game"
+    ],
+    "antiLabels": [],
+    "hasText": true,
+    "avgTextLength": 192,
+    "medianTextLength": 204,
+    "textLengthThreshold": 204,
+    "recommendedPriority": 0.82,
+    "sampleSize": 17,
+    "avgConfidence": 0.39904055993882354
+  },
+  "UI / 화면": {
+    "noChanges": true,
+    "reason": "No corrections found"
+  },
+  "게임 스크린샷": {
+    "noChanges": true,
+    "reason": "No corrections found"
+  },
+  "기타": {
+    "requiredLabels": [
+      "Graphics",
+      "Animation"
+    ],
+    "recommendedLabels": [
+      "Fictional character",
+      "Graphic design",
+      "Animated cartoon",
+      "Fiction"
+    ],
+    "antiLabels": [],
+    "hasText": false,
+    "avgTextLength": 18,
+    "medianTextLength": 13,
+    "textLengthThreshold": 13,
+    "recommendedPriority": 0.8,
+    "sampleSize": 13,
+    "avgConfidence": 0.3297850915815384
+  }
+}

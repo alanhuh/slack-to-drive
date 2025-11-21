@@ -1,0 +1,418 @@
+/**
+ * Classification Rules
+ *
+ * Defines rules for classifying images into categories based on:
+ * - Slack message keywords
+ * - Google Vision API labels
+ * - OCR text presence
+ * - User history
+ */
+
+const logger = require('../../utils/logger');
+
+// Category definitions with matching rules
+const CATEGORY_RULES = {
+  '캐릭터 일러스트 (단독)': {
+    keywords: [
+      '캐릭터', 'character', '단독', 'solo', 'single', '일러스트', 'illustration',
+      '그림', 'drawing', 'portrait', '인물', '캐릭', 'char', 'persona',
+      '1인', 'one', 'alone'
+    ],
+    visionLabels: [
+      'Graphics',
+      'Animation',
+      'Fictional character',
+      'Graphic design',
+      'Animated cartoon',
+      'person',
+      'character',
+      'anime',
+      'cartoon',
+      'drawing',
+      'art',
+      'illustration',
+      'sketch',
+      'portrait',
+      'face',
+      'manga',
+      'comic',
+      'human',
+      'figure',
+      'character design'
+    ],
+    antiLabels: [
+      'crowd',
+      'group',
+      'people',
+      'team',
+      'landscape',
+      'scenery',
+      'Animation',
+      'Fictional character',
+      'Fiction',
+      'Animated cartoon',
+      'Cartoon'
+    ],
+    hasText: false, // 텍스트가 적을수록 가산점
+    priority: 0.85,
+    requiresSinglePerson: true // Special rule: should detect only 1 person
+  },
+
+  '일러스트 (단체)': {
+    keywords: [
+      '일러스트', 'illustration', '단체', 'group', 'team', 'multiple', 'many',
+      '배경', 'background', '풍경', 'landscape', 'scenery', 'environment',
+      '복수', 'several', '여러', 'bg', '씬', 'scene'
+    ],
+    visionLabels: [
+      'Animation',
+      'Fiction',
+      'Fictional character',
+      'Animated cartoon',
+      'Anime',
+      'Cartoon',
+      'CG artwork',
+      'Graphics',
+      'Hero',
+      'PC game',
+      'people',
+      'group',
+      'crowd',
+      'team',
+      'illustration',
+      'art',
+      'drawing',
+      'landscape',
+      'sky',
+      'mountain',
+      'nature',
+      'scenery',
+      'environment',
+      'outdoor',
+      'building',
+      'architecture',
+      'city',
+      'forest',
+      'ocean',
+      'background',
+      'scene',
+      'anime',
+      'cartoon'
+    ],
+    antiLabels: [
+      'High-rise building',
+      'Cityscape',
+      'Skyscraper',
+      'Animation',
+      'Tower'
+    ],
+    hasText: false,
+    priority: 0.8,
+    requiresMultipleElements: true // Multiple people or complex background
+  },
+
+  'UI / 화면': {
+    keywords: [
+      'ui', 'ux', '디자인', 'design', '화면', 'screen', '인터페이스', 'interface',
+      '목업', 'mockup', '프로토타입', 'prototype', '앱', 'app', '웹', 'web',
+      '버튼', 'button', '레이아웃', 'layout', '메뉴', 'menu'
+    ],
+    visionLabels: [
+      'Animation',
+      'Animated cartoon',
+      'Video Game Software',
+      'Anime',
+      'Fictional character',
+      'Screenshot',
+      'Graphic design',
+      'High-rise building',
+      'Game',
+      'PC game',
+      'user interface',
+      'mobile app',
+      'website',
+      'application',
+      'software',
+      'screen',
+      'display',
+      'button',
+      'menu',
+      'icon',
+      'logo',
+      'design',
+      'mockup',
+      'prototype',
+      'dashboard',
+      'webpage',
+      'ui design'
+    ],
+    antiLabels: [
+      'Diagram',
+      'Graphic design',
+      'Screenshot',
+      'Plan',
+      'Animation',
+      'Graphics',
+      'Video Game Software'
+    ],
+    hasText: true, // UI는 보통 텍스트 많음
+    priority: 0.82
+  },
+
+  '게임 스크린샷': {
+    keywords: [
+      '게임', 'game', 'gaming', '게임플레이', 'gameplay', '플레이', 'play',
+      '스크린샷', 'screenshot', '캡처', 'capture', '화면캡처', 'screencap',
+      'ss', '캡쳐', 'cap', '인게임', 'ingame'
+    ],
+    visionLabels: [
+      'Animation',
+      'Video Game Software',
+      'Fictional character',
+      'PC game',
+      'Screenshot',
+      'Graphics',
+      'Graphic design',
+      'game',
+      'video game',
+      'gaming',
+      'gameplay',
+      'screenshot',
+      'game screen',
+      'computer monitor',
+      'display',
+      'screen',
+      'window',
+      'desktop',
+      'game ui',
+      'hud',
+      'health bar',
+      'game interface'
+    ],
+    hasText: false, // 게임 UI 텍스트
+    priority: 0.86
+  },
+
+  '기타': {
+    keywords: [
+      '기타', 'other', 'misc', 'miscellaneous', '미분류', 'uncategorized',
+      '잡다', 'various', '모호', 'unclear'
+    ],
+    visionLabels: [],
+    hasText: false,
+    priority: 0.84 // 최후의 선택
+  }
+};
+
+class ClassificationRules {
+  /**
+   * Classify image based on Vision API results and Slack context
+   * @param {Object} visionAnalysis - Vision API analysis results
+   * @param {Object} slackContext - Slack message context
+   * @param {Array} existingCategories - List of existing categories in Drive
+   * @returns {Object} Classification result
+   */
+  classifyImage(visionAnalysis, slackContext, existingCategories = []) {
+    const scores = {};
+
+    // Initialize scores for all categories
+    for (const category of Object.keys(CATEGORY_RULES)) {
+      scores[category] = 0;
+    }
+
+    // 1. Analyze Slack message keywords (40% weight)
+    const keywordScores = this.analyzeKeywords(slackContext);
+    for (const [category, score] of Object.entries(keywordScores)) {
+      scores[category] += score * 0.4;
+    }
+
+    // 2. Analyze Vision API labels (40% weight)
+    const labelScores = this.analyzeVisionLabels(visionAnalysis.labels);
+    for (const [category, score] of Object.entries(labelScores)) {
+      scores[category] += score * 0.4;
+    }
+
+    // 3. Analyze text presence (20% weight)
+    const textScores = this.analyzeTextPresence(visionAnalysis.text);
+    for (const [category, score] of Object.entries(textScores)) {
+      scores[category] += score * 0.2;
+    }
+
+    // 4. Apply priority adjustments
+    for (const [category, score] of Object.entries(scores)) {
+      const priority = CATEGORY_RULES[category].priority;
+      scores[category] = score * priority;
+    }
+
+    // Sort categories by score
+    const sortedCategories = Object.entries(scores)
+      .sort((a, b) => b[1] - a[1])
+      .map(([category, score]) => ({
+        name: category,
+        confidence: Math.min(score, 1.0),
+        score: score
+      }));
+
+    const topCategory = sortedCategories[0];
+    const method = this.determineMethod(keywordScores, labelScores, textScores, topCategory.name);
+
+    logger.info('Classification completed', {
+      category: topCategory.name,
+      confidence: topCategory.confidence.toFixed(2),
+      method: method,
+      topScores: sortedCategories.slice(0, 3).map(c => `${c.name}:${c.confidence.toFixed(2)}`)
+    });
+
+    return {
+      category: topCategory.name,
+      confidence: topCategory.confidence,
+      method: method,
+      alternatives: sortedCategories.slice(1, 3),
+      scores: scores // for debugging
+    };
+  }
+
+  /**
+   * Analyze Slack message keywords
+   */
+  analyzeKeywords(slackContext) {
+    const scores = {};
+    const contextText = this.extractContextText(slackContext).toLowerCase();
+
+    if (!contextText) {
+      // No context, return 0 scores
+      for (const category of Object.keys(CATEGORY_RULES)) {
+        scores[category] = 0;
+      }
+      return scores;
+    }
+
+    for (const [category, rules] of Object.entries(CATEGORY_RULES)) {
+      let matchCount = 0;
+
+      for (const keyword of rules.keywords) {
+        if (contextText.includes(keyword.toLowerCase())) {
+          matchCount++;
+        }
+      }
+
+      // Normalize by number of keywords (max 1.0)
+      scores[category] = Math.min(matchCount / 2, 1.0);
+    }
+
+    return scores;
+  }
+
+  /**
+   * Analyze Vision API labels
+   */
+  analyzeVisionLabels(labels) {
+    const scores = {};
+
+    if (!labels || labels.length === 0) {
+      for (const category of Object.keys(CATEGORY_RULES)) {
+        scores[category] = 0;
+      }
+      return scores;
+    }
+
+    const labelTexts = labels.map(l => l.description.toLowerCase());
+
+    for (const [category, rules] of Object.entries(CATEGORY_RULES)) {
+      let matchScore = 0;
+
+      for (const visionLabel of rules.visionLabels) {
+        const matchedLabel = labelTexts.find(lt =>
+          lt.includes(visionLabel.toLowerCase()) || visionLabel.toLowerCase().includes(lt)
+        );
+
+        if (matchedLabel) {
+          // Find confidence score of matched label
+          const labelObj = labels.find(l => l.description.toLowerCase() === matchedLabel);
+          if (labelObj) {
+            matchScore = Math.max(matchScore, labelObj.score);
+          }
+        }
+      }
+
+      scores[category] = matchScore;
+    }
+
+    return scores;
+  }
+
+  /**
+   * Analyze text presence (OCR results)
+   */
+  analyzeTextPresence(textAnalysis) {
+    const scores = {};
+    const hasText = textAnalysis.hasText;
+    const textLength = textAnalysis.full.length;
+
+    for (const [category, rules] of Object.entries(CATEGORY_RULES)) {
+      if (rules.hasText === null) {
+        // Text presence doesn't matter
+        scores[category] = 0.5;
+      } else if (rules.hasText === true && hasText && textLength > 10) {
+        // Category expects text and image has text
+        scores[category] = Math.min(textLength / 100, 1.0);
+      } else if (rules.hasText === false && (!hasText || textLength < 10)) {
+        // Category expects no text and image has no text
+        scores[category] = 1.0;
+      } else {
+        // Mismatch
+        scores[category] = 0.2;
+      }
+    }
+
+    return scores;
+  }
+
+  /**
+   * Extract text from Slack context
+   */
+  extractContextText(slackContext) {
+    if (!slackContext || !slackContext.messages) {
+      return '';
+    }
+
+    return slackContext.messages
+      .map(m => m.text || '')
+      .join(' ');
+  }
+
+  /**
+   * Determine classification method
+   */
+  determineMethod(keywordScores, labelScores, textScores, topCategory) {
+    const keywordScore = keywordScores[topCategory] || 0;
+    const labelScore = labelScores[topCategory] || 0;
+
+    if (keywordScore > 0.5 && labelScore > 0.5) {
+      return 'hybrid';
+    } else if (keywordScore > 0.5) {
+      return 'keyword_match';
+    } else if (labelScore > 0.5) {
+      return 'vision_api';
+    } else {
+      return 'low_confidence';
+    }
+  }
+
+  /**
+   * Get category rules for a specific category
+   */
+  getCategoryRules(category) {
+    return CATEGORY_RULES[category] || null;
+  }
+
+  /**
+   * Get all available categories
+   */
+  getAllCategories() {
+    return Object.keys(CATEGORY_RULES);
+  }
+}
+
+// Export singleton instance
+module.exports = new ClassificationRules();

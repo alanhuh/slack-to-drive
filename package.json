@@ -24,6 +24,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@google-cloud/vision": "^5.3.4",
     "@notionhq/client": "^5.4.0",
     "@slack/bolt": "^3.17.0",
     "@slack/web-api": "^6.9.1",

@@ -110,7 +110,46 @@ const config = {
   notion: {
     apiKey: process.env.NOTION_API_KEY || '',
     uploadLogDbId: process.env.NOTION_UPLOAD_LOG_DB_ID || '',
+    classificationLogDbId: process.env.NOTION_CLASSIFICATION_LOG_DB_ID || '',
     enabled: parseBoolean(process.env.ENABLE_NOTION_LOGGING, false),
+    classificationLoggingEnabled: parseBoolean(process.env.ENABLE_CLASSIFICATION_LOGGING, false),
+  },
+
+  // Google Cloud Vision API (Optional)
+  vision: {
+    apiKey: process.env.GOOGLE_VISION_API_KEY || null,
+    credentialsBase64: process.env.GOOGLE_VISION_CREDENTIALS_BASE64 || null,
+    credentialsPath: process.env.GOOGLE_VISION_CREDENTIALS_PATH || null,
+    enabled: parseBoolean(process.env.ENABLE_VISION_API, false),
+  },
+
+  // AI Classification
+  classification: {
+    enabled: parseBoolean(process.env.ENABLE_AI_CLASSIFICATION, false),
+    confidenceThreshold: parseFloat(process.env.AI_CONFIDENCE_THRESHOLD) || 0.7,
+    categories: parseArray(process.env.CLASSIFICATION_CATEGORIES, [
+      '캐릭터 일러스트 (단독)',
+      '일러스트 (단체)',
+      'UI / 화면',
+      '게임 스크린샷',
+      '기타'
+    ]),
+    rootFolderName: process.env.CLASSIFICATION_ROOT_FOLDER_NAME || 'AI_분류',
+    rootFolderId: process.env.CLASSIFICATION_ROOT_FOLDER_ID || null, // If null, uses drive.folderId as parent
+  },
+
+  // Context Collection
+  context: {
+    messageLim: parseInteger(process.env.CONTEXT_MESSAGE_LIMIT, 2),
+    preferThread: parseBoolean(process.env.PREFER_THREAD_CONTEXT, true),
+    enableKeywordMatching: parseBoolean(process.env.ENABLE_KEYWORD_MATCHING, true),
+  },
+
+  // Learning & Feedback
+  learning: {
+    enabled: parseBoolean(process.env.ENABLE_LEARNING_TRACKER, true),
+    reportInterval: parseInteger(process.env.LEARNING_REPORT_INTERVAL, 50),
+    feedbackStorage: process.env.FEEDBACK_STORAGE || 'database', // 'database', 'notion', 'both'
   },
 
   // OAuth Tokens (Optional - for persisting across deployments)
