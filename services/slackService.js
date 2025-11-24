@@ -90,6 +90,38 @@ async function downloadFileStream(downloadUrl) {
 }
 
 /**
+ * Download file from Slack as buffer (for Vision API analysis)
+ * @param {string} downloadUrl - Slack private download URL
+ * @returns {Promise<Buffer>} - File buffer
+ */
+async function downloadFile(downloadUrl) {
+  try {
+    logger.logApiCall('slack', 'downloadBuffer', { url: downloadUrl });
+
+    const response = await axios.get(downloadUrl, {
+      headers: {
+        'Authorization': `Bearer ${config.slack.botToken}`,
+      },
+      responseType: 'arraybuffer',
+      timeout: 30000, // 30 seconds
+    });
+
+    logger.debug('File downloaded as buffer', {
+      contentType: response.headers['content-type'],
+      contentLength: response.headers['content-length'],
+    });
+
+    return Buffer.from(response.data);
+  } catch (error) {
+    logger.logError('Failed to download file buffer from Slack', error, {
+      url: downloadUrl,
+      status: error.response?.status,
+    });
+    throw error;
+  }
+}
+
+/**
  * Get user information
  * @param {string} userId - Slack user ID
  * @returns {Promise<Object>} - User information
@@ -442,6 +474,7 @@ module.exports = {
   slackClient,
   getFileInfo,
   downloadFileStream,
+  downloadFile,
   getUserInfo,
   sendMessage,
   sendCompletionMessage,
