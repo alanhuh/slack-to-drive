@@ -318,28 +318,8 @@ class ClassificationRules {
       scores[category] += score * 0.3;
     }
 
-    // 4. Analyze face counts for solo vs group detection (HIGH PRIORITY)
-    if (visionAnalysis.faces && visionAnalysis.faces.count !== undefined) {
-      const faceCount = visionAnalysis.faces.count;
-
-      if (faceCount === 1) {
-        // Single face detected - STRONG indicator of solo character
-        scores['캐릭터 일러스트 (단독)'] = Math.min(scores['캐릭터 일러스트 (단독)'] + 0.25, 1.0);
-        logger.info('Single face detected - boosting solo score', { faceCount: 1 });
-      } else if (faceCount >= 2) {
-        // Multiple faces detected - STRONG indicator of group
-        scores['일러스트 (단체)'] = Math.min(scores['일러스트 (단체)'] + 0.30, 1.0);
-        // Penalize solo category to prevent misclassification
-        scores['캐릭터 일러스트 (단독)'] = Math.max(scores['캐릭터 일러스트 (단독)'] - 0.20, 0);
-        logger.info('Multiple faces detected - boosting group score', { faceCount });
-      } else if (faceCount === 0) {
-        // No faces - likely UI, screenshot, or background
-        scores['UI / 화면'] = Math.min(scores['UI / 화면'] + 0.10, 1.0);
-        scores['게임 스크린샷'] = Math.min(scores['게임 스크린샷'] + 0.10, 1.0);
-        scores['기타'] = Math.min(scores['기타'] + 0.05, 1.0);
-        logger.info('No faces detected - boosting UI/screenshot scores', { faceCount: 0 });
-      }
-    }
+    // 4. (REMOVED) Face detection - using text length + logo detection instead (FREE)
+    // Face detection removed to save API costs - relies on text/logo analysis below
 
     // 5. Text length analysis for solo vs group distinction (FREE - NO API COST)
     if (visionAnalysis.text && visionAnalysis.text.hasText) {

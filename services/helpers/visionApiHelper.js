@@ -83,8 +83,8 @@ class VisionApiHelper {
       const features = [
         { type: 'LABEL_DETECTION', maxResults: 10 },
         { type: 'TEXT_DETECTION' },
-        { type: 'IMAGE_PROPERTIES' },
-        { type: 'FACE_DETECTION', maxResults: 20 }  // For solo vs group detection
+        { type: 'IMAGE_PROPERTIES' }
+        // FACE_DETECTION removed - using text length + logo detection instead (FREE)
       ];
 
       if (options.includeObjects) {
